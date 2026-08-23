@@ -1,0 +1,1 @@
+ALTER TABLE "fields" ADD COLUMN "in_detail" boolean DEFAULT true NOT NULL;
