@@ -5,57 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1787459340317,
-      "tag": "0000_same_freak",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1787462982064,
-      "tag": "0001_watery_darwin",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1787464460992,
-      "tag": "0002_sparkling_white_queen",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1787474705866,
-      "tag": "0003_lovely_the_professor",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1787479749529,
-      "tag": "0004_org_scoped_tables",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1787483117563,
-      "tag": "0005_relation_key_column",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1787489603075,
-      "tag": "0006_personas_and_access",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1787492937937,
-      "tag": "0007_field_in_detail",
+      "when": 1787495608330,
+      "tag": "0000_init_hierarchy",
       "breakpoints": true
     }
   ]

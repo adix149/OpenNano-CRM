@@ -1,1 +1,0 @@
-ALTER TYPE "public"."field_type" ADD VALUE 'datetime';

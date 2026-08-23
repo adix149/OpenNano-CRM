@@ -1,1 +1,0 @@
-ALTER TABLE "fields" ADD COLUMN "relation_field_name" text;
