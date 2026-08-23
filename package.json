@@ -1,15 +1,19 @@
 {
-  "name": "nanoblisscrm",
-  "version": "0.1.0",
+  "name": "opennano-crm",
+  "version": "0.2.0",
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --hot src/index.ts",
+    "dev": "bun --hot src/server.ts",
+    "dev:legacy": "bun --hot src/index.ts",
     "dev:web": "bun run --cwd web dev",
     "build:web": "bun run --cwd web build",
-    "start": "bun run src/index.ts",
+    "build": "bun run build:web",
+    "start": "bun run src/server.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "lint": "tsc --noEmit",
+    "lint:web": "vue-tsc -b"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",
