@@ -1,28 +1,44 @@
-import { pgEnum, pgTable, serial, text, timestamp, boolean, integer, uniqueIndex } from "drizzle-orm/pg-core";
-
 /**
- * Nomenclature (hierarchy):
- * Organization → Project → Entity (Table/Collection) → Field (Column) → Record (Row)
- * - Organization: top-level tenant (e.g. "Acme Corp"), owns projects & users
- * - Project: container within an org (e.g. "Sales CRM"), owns entities
- * - Entity: dynamic table definition, auto-creates a real Postgres table + form
- * - Field: column definition within an entity
- * - Record: row instance in an entity's table
- * - Relation (Connection Key): a field that references another entity's records
+ * OpenNano-CRM — Database Schema
+ *
+ * Strict hierarchy (enforced by foreign keys):
+ *
+ *   Organization ─┬─► Project ─┬─► Entity (Table)
+ *                 │             │      └─► Field (Column) ─► FieldOption
+ *                 │             └─► Entity (org-wide, project_id = NULL)
+ *                 └─► User
+ *                      └─► Entity (physical table lives in org's Postgres schema)
+ *
+ * Physical storage:
+ *   Each organization owns one Postgres schema named after its slug.
+ *   All dynamic tables live as `<org_slug>.<entity_slug>`.
+ *   Backup/restore per org = dump one schema. Delete org = drop schema.
  */
 
-// ── Hierarchy ──
+import { pgEnum, pgTable, serial, text, timestamp, boolean, integer, uniqueIndex } from "drizzle-orm/pg-core";
 
-export const orgs = pgTable("orgs", {
+// ─────────────────────────────────────────────────────────────────────────────
+// Organizations — top-level tenant
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const organizations = pgTable("organizations", {
   id: serial("id").primaryKey(),
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
   description: text("description"),
-  /** Default access personas applied to new tables in this org. */
+  iconUrl: text("icon_url"),
   defaultViewRole: text("default_view_role").notNull().default("viewer"),
   defaultEditRole: text("default_edit_role").notNull().default("editor"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Backwards compat alias — old code imports `orgs`
+export const orgs = organizations;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Projects — container within an organization
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const projects = pgTable(
   "projects",
@@ -33,40 +49,38 @@ export const projects = pgTable(
     description: text("description"),
     orgId: integer("org_id")
       .notNull()
-      .references(() => orgs.id, { onDelete: "cascade" }),
+      .references(() => organizations.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("projects_org_id_slug_idx").on(t.orgId, t.slug)],
 );
 
-// ── Users & Auth (local, extensible to OAuth later) ──
+// ─────────────────────────────────────────────────────────────────────────────
+// Personas — ranked: viewer < editor < developer < admin
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Personas (ranked): viewer < editor < developer < admin.
- * - viewer: read records only
- * - editor: create/edit/delete records
- * - developer: build tables/fields (Dev Studio) + org/table access settings
- * - admin: everything, incl. user management
- * "member" is a legacy alias of viewer.
- */
 export const userRole = pgEnum("user_role", ["admin", "developer", "editor", "viewer", "member"]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Users — bound to an organization, authenticated via JWT
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   displayName: text("display_name").notNull(),
   passwordHash: text("password_hash").notNull(),
-  role: userRole("role").notNull().default("member"),
-  orgId: integer("org_id").references(() => orgs.id, { onDelete: "set null" }),
+  role: userRole("role").notNull().default("viewer"),
+  orgId: integer("org_id").references(() => organizations.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ── Dynamic entities ──
+// ─────────────────────────────────────────────────────────────────────────────
+// Entities — dynamic tables (physical: <org_slug>.<entity_slug>)
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Field types supported.
- * - relation: stores INTEGER FK to another entity's record (connection key)
- */
 export const fieldType = pgEnum("field_type", [
   "text",
   "number",
@@ -88,22 +102,25 @@ export const entities = pgTable(
     id: serial("id").primaryKey(),
     slug: text("slug").notNull(),
     label: text("label").notNull(),
-    /**
-     * Every table belongs to exactly one org; its physical Postgres table
-     * lives inside that org's schema (`<org_slug>.<entity_slug>`).
-     */
+    description: text("description"),
+    icon: text("icon"),
+    /** Owning org — determines physical Postgres schema. */
     orgId: integer("org_id")
       .notNull()
-      .references(() => orgs.id, { onDelete: "cascade" }),
-    /** NULL = organization-wide scope; set = nested under a project. */
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** NULL = organization-wide; set = scoped to a project. */
     projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
-    /** Minimum persona required to view / edit records of this table. */
     viewRole: text("view_role").notNull().default("viewer"),
     editRole: text("edit_role").notNull().default("editor"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("entities_project_id_slug_idx").on(t.projectId, t.slug), uniqueIndex("entities_org_id_slug_idx").on(t.orgId, t.slug)],
+  (t) => [uniqueIndex("entities_org_id_slug_idx").on(t.orgId, t.slug)],
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fields — columns within an entity
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const fields = pgTable(
   "fields",
@@ -116,19 +133,20 @@ export const fields = pgTable(
     label: text("label").notNull(),
     type: fieldType("type").notNull(),
     isRequired: boolean("is_required").notNull().default(false),
-    sortOrder: integer("sort_order").notNull().default(0),
-    // For relation (connection key) fields: which entity they reference
-    relationEntityId: integer("relation_entity_id").references(() => entities.id, { onDelete: "set null" }),
-    /** Which column of the target table is used as the linking/display key. */
-    relationFieldName: text("relation_field_name"),
-    /** Whether this field appears on the record detail page. */
     inDetail: boolean("in_detail").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    /** For relation fields: target entity + display column. */
+    relationEntityId: integer("relation_entity_id").references(() => entities.id, { onDelete: "set null" }),
+    relationFieldName: text("relation_field_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("fields_entity_id_name_idx").on(t.entityId, t.name)],
 );
 
-/** Predetermined values for `select` fields; stored per field, order matters. */
+// ─────────────────────────────────────────────────────────────────────────────
+// Field options — allowed values for `select` fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const fieldOptions = pgTable(
   "field_options",
   {
