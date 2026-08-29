@@ -26,9 +26,11 @@ import type { AuthVar } from "../lib/middleware";
 
 const app = new Hono<{ Variables: AuthVar }>();
 
-// The whole Dev surface restructures the backend — builders only.
+// Metadata reads power the regular CRM sidebar too. Only mutations are
+// restricted to builders.
 app.use("*", async (c, next) => {
-  if (!isBuilder(c.get("user")?.role)) {
+  if (!c.get("user")) return c.json({ error: "Not authenticated" }, 401);
+  if (c.req.method !== "GET" && !isBuilder(c.get("user")?.role)) {
     return c.json({ error: "Developer or admin access required" }, 403);
   }
   await next();
@@ -236,10 +238,12 @@ app.post("/entities", async (c) => {
 });
 
 app.get("/entities", async (c) => {
+  const user = c.get("user");
   const entityRows = await db
     .select({ entity: tables, orgSlug: organizations.slug })
     .from(tables)
     .innerJoin(organizations, eq(organizations.id, tables.orgId))
+    .where(user && !isBuilder(user.role) ? eq(tables.orgId, user.orgId) : undefined)
     .orderBy(tables.id);
   const fieldRows = await db.select().from(columns).orderBy(columns.sortOrder, columns.id);
   const optionMap = await attachOptions(fieldRows.map((f) => f.id));

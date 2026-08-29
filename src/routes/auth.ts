@@ -73,7 +73,7 @@ app.post("/login", async (c) => {
   if (!user) return c.json({ error: "Invalid credentials" }, 401);
   if (parsed.data.orgSlug) {
     const [orgRow] = await db.select().from(orgsTable).where(eq(orgsTable.slug, parsed.data.orgSlug));
-    if (!orgRow || user.organizationId !== orgRow.id) return c.json({ error: "Invalid credentials for this organization" }, 401);
+    if (!orgRow || user.orgId !== orgRow.id) return c.json({ error: "Invalid credentials for this organization" }, 401);
   }
   const ok = await verifyPassword(parsed.data.password, user.passwordHash);
   if (!ok) return c.json({ error: "Invalid credentials" }, 401);

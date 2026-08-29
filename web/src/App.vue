@@ -17,9 +17,10 @@ onMounted(() => {
   fetchMe().catch(() => {});
 });
 
-const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: api.listEntities });
-const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
-const orgsQuery = useQuery({ queryKey: ["orgs"], queryFn: api.listOrgs });
+const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: api.listEntities, enabled: computed(() => Boolean(user.value)) });
+const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects, enabled: computed(() => Boolean(user.value)) });
+const orgsQuery = useQuery({ queryKey: ["orgs"], queryFn: api.listOrgs, enabled: computed(() => Boolean(user.value)) });
+const hierarchyQuery = useQuery({ queryKey: ["hierarchy"], queryFn: api.getHierarchy, enabled: computed(() => Boolean(user.value)) });
 
 /** Tables grouped by project for the sidebar. */
 const groups = computed(() => {
@@ -30,8 +31,9 @@ const groups = computed(() => {
       project: p,
       org: orgsQuery.data.value?.find((o) => o.id === p.orgId),
       tables: entities.filter((e) => e.projectId === p.id),
+      reports: (hierarchyQuery.data.value?.reports ?? []).filter((report) => report.projectId === p.id),
     }))
-    .filter((g) => g.tables.length > 0);
+    .filter((g) => g.tables.length > 0 || g.reports.length > 0);
 });
 
 const isAdmin = computed(() => user.value?.role === "admin");
@@ -117,6 +119,10 @@ function handleLogout() {
             <RouterLink v-for="e in g.tables" :key="e.id" :to="`/data/${e.slug}`" class="table-link" :class="{ 'table-link-active': route.params.slug === e.slug && route.path.startsWith('/data') }">
               <span class="table-link-line"></span>
               <span class="truncate">{{ e.label }}</span>
+            </RouterLink>
+            <RouterLink v-for="report in g.reports" :key="`report-${report.id}`" :to="devMode ? `/dev/projects/${g.project.id}/reports/${report.id}` : `/reports/${g.project.id}/${report.id}`" class="table-link report-link" :class="{ 'table-link-active': route.params.reportId === String(report.id) }">
+              <span class="table-link-line"></span>
+              <span class="truncate">{{ report.label }}</span><span class="report-nav-badge">PDF</span>
             </RouterLink>
           </div>
         </template>

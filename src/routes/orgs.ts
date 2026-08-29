@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "../db/connection";
-import { organizations, projects, tables } from "../db/schema";
+import { organizations, projects, tables, users } from "../db/schema";
 import { ensureOrgSchema, renameOrgSchema, dropOrgSchema } from "../lib/dynamic-sql";
 import { isBuilder } from "../lib/personas";
 import type { AuthVar } from "../lib/middleware";
@@ -35,6 +35,12 @@ app.post("/", async (c) => {
   const [org] = await db.insert(organizations).values({ slug: parsed.data.slug, name: parsed.data.name, description: parsed.data.description ?? null }).returning();
   // Every org owns a Postgres schema named after its slug — create it up front.
   await ensureOrgSchema(db, org.slug);
+  // During first-run setup, bind the authenticated unassigned account to the
+  // organization it just created so the login organization selector works.
+  const currentUser = c.get("user");
+  if (currentUser && currentUser.orgId == null) {
+    await db.update(users).set({ orgId: org.id }).where(eq(users.id, currentUser.sub));
+  }
   return c.json(org, 201);
 });
 
@@ -122,7 +128,12 @@ app.post("/:orgId/projects", async (c) => {
 // Standalone project list / detail for convenience
 const projectApp = new Hono<{ Variables: AuthVar }>();
 projectApp.get("/", async (c) => {
-  const rows = await db.select().from(projects).orderBy(projects.id);
+  const user = c.get("user");
+  const rows = await db
+    .select()
+    .from(projects)
+    .where(user && !isBuilder(user.role) ? eq(projects.orgId, user.orgId) : undefined)
+    .orderBy(projects.id);
   // attach org and entity counts
   return c.json(rows);
 });

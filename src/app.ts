@@ -20,6 +20,7 @@ import tablesRoutes from "./modules/tables/tables.routes";
 import recordsRoutes from "./modules/records/records.routes";
 import reportsRoutes from "./modules/reports/reports.routes";
 import { db } from "./db/connection";
+import { eq, inArray } from "drizzle-orm";
 
 export function createApp() {
   const app = new Hono();
@@ -48,12 +49,16 @@ export function createApp() {
   // Hierarchy overview for dashboards
   app.get("/api/hierarchy", async (c) => {
     const { organizations, projects, tables, columns, reports } = await import("./db/schema");
-    const [orgRows, projRows, entRows, fieldRows, reportRows] = await Promise.all([
-      db.select().from(organizations),
-      db.select().from(projects),
-      db.select().from(tables),
+    const user = c.get("user" as any) as any;
+    const orgRows = user && !["admin", "developer"].includes(user.role)
+      ? await db.select().from(organizations).where(eq(organizations.id, user.orgId))
+      : await db.select().from(organizations);
+    const orgIds = orgRows.map((org) => org.id);
+    const [projRows, entRows, fieldRows, reportRows] = await Promise.all([
+      orgIds.length ? db.select().from(projects).where(inArray(projects.orgId, orgIds)) : db.select().from(projects).where(eq(projects.id, -1)),
+      orgIds.length ? db.select().from(tables).where(inArray(tables.orgId, orgIds)) : db.select().from(tables).where(eq(tables.id, -1)),
       db.select().from(columns),
-      db.select().from(reports),
+      orgIds.length ? db.select().from(reports).innerJoin(projects, eq(reports.projectId, projects.id)).where(inArray(projects.orgId, orgIds)).then((rows) => rows.map(({ reports: report }) => report)) : Promise.resolve([]),
     ]);
     return c.json({ organizations: orgRows, orgs: orgRows, projects: projRows, tables: entRows, entities: entRows, columns: fieldRows, fields: fieldRows, reports: reportRows });
   });

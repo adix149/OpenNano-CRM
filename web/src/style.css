@@ -100,6 +100,8 @@
   .table-link { display: flex; align-items: center; gap: .55rem; margin-left: 1.15rem; border-left: 1px solid #353b4b; padding: .42rem .5rem .42rem .85rem; color: #9da6b8; font-size: .75rem; transition: 150ms ease; }
   .table-link:hover, .table-link-active { border-left-color: #a78bfa; color: #fff; background: #1b2030; }
   .table-link-line { width: .3rem; height: .3rem; border: 1px solid currentColor; border-radius: 999px; }
+  .report-link { color: #b9a7e8; }
+  .report-nav-badge { margin-left: auto; border-radius: 999px; background: #33264f; padding: .12rem .3rem; color: #c4b5fd; font-size: .52rem; font-weight: 700; }
   .empty-sidebar { border: 1px dashed #343b4b; background: #171b25; }
   .user-card { background: #191d28; }
   .logout-link { padding: .35rem .5rem; color: #8991a3; font-size: .7rem; }
