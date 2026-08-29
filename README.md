@@ -1,142 +1,282 @@
 # OpenNano CRM
 
-A lightweight, self-hostable CRM with a **runtime-configurable schema**. Developers declare
-entities and fields in the `/dev` view; declarations issue real Postgres DDL
-(`CREATE TABLE` / `ALTER TABLE`) tracked by a metadata registry. The end-user view at `/app`
-renders generic list/create/edit/delete screens driven entirely by that registry.
+OpenNano CRM is a self-hostable, metadata-driven CRM built around a strict hierarchy:
 
-Fields are fully editable after creation: rename columns, change types (data is re-cast),
-toggle required, relabel, or delete fields outright. Entities can be retitled or reslugged
-(reslug renames the underlying table).
+```text
+Organization -> Project -> Table -> Column -> Record
+                         \-> Report -> Layout blocks
+```
+
+Organizations are the top-level tenant boundary. Projects belong to organizations,
+tables belong to projects, and every dynamic table is physically stored inside its
+own organization's PostgreSQL schema. Reports belong to projects and can combine
+fields from tables in the same organization.
+
+## What It Does
+
+- Provides a regular CRM workspace for working with records.
+- Provides a separate Dev Studio for developers and administrators.
+- Creates real PostgreSQL tables and columns from table and field metadata.
+- Supports field types including text, number, decimal, boolean, date, datetime,
+  email, phone, URL, location, select, and relation.
+- Allows developers to rename fields, change types, edit select values, change
+  visibility, configure relations, and delete fields.
+- Renders forms and record detail pages from table metadata.
+- Supports organization, project, table, column, and record hierarchy validation.
+- Provides project reports built from fields across the organization's tables.
+- Provides drag-and-drop report layouts with field blocks, headings, spacers, and
+  full, half, or third-width fields.
+- Supports browser print preview and PDF downloads for reports and records.
+
+## Modes
+
+### CRM Workspace
+
+Regular users work in the CRM workspace. The sidebar shows the projects and tables
+available to them, and table pages provide record list, create, edit, and detail
+views.
+
+### Dev Studio
+
+Developers and administrators can switch to Dev Studio to manage structure:
+
+- Create project-scoped tables.
+- Add and edit columns.
+- Configure select values and relations.
+- Change table permissions.
+- Build project reports.
+- Manage organizations and projects.
+
+The UI does not allow organization-level tables. A table must have both an owning
+organization and a project, and the database enforces that the project belongs to
+the same organization.
+
+## Reports
+
+Reports are owned by a project:
+
+```text
+Organization
+  Project
+    Report
+      Field blocks from tables in the organization
+```
+
+To create a report:
+
+1. Open a project in the hierarchy administration page.
+2. Select **New report**.
+3. Choose fields from the available organization tables.
+4. Drag blocks to reorder them, or click fields to add them.
+5. Set field widths, add headings or spacers, and configure the report title.
+6. Save the report.
+
+Saved reports have a view-only route for regular users and a developer editing route.
+Both support print preview. Saved reports can also be downloaded as PDF files.
 
 ## Stack
 
-Bun · Hono · PostgreSQL 16 · Drizzle ORM (`drizzle-orm/bun-sql` driver) · drizzle-kit ·
-Zod · Vue 3 (Composition API) · Vite · shadcn-vue · Tailwind CSS v4 ·
-@tanstack/vue-query · vee-validate · @internationalized/date (Apache-2.0)
+Bun, Hono, PostgreSQL 16, Drizzle ORM, Drizzle Kit, Zod, Vue 3, Vite,
+Tailwind CSS v4, shadcn-vue, and TanStack Vue Query.
 
-## Run it
+## Run With Docker
 
 ```bash
 docker compose up --build
 ```
 
-Then open:
+Open <http://localhost:3000>.
 
-- **User view:** http://localhost:3000/app
-- **Developer view:** http://localhost:3000/dev
+On a fresh database, register the first account from the login page. The first
+account becomes an administrator. If there are no organizations, the application
+routes to setup so the first organization and project can be created before tables
+are declared.
 
-The app container waits for the Postgres healthcheck, applies Drizzle migrations
-automatically on boot, then starts Hono serving both the API (`/api/*`) and the built
-Vue SPA.
+The app container waits for PostgreSQL, applies Drizzle migrations on startup, and
+serves both the API and the built Vue application.
 
-### Local development (without Docker for the app)
+### Reset Local Data
+
+This removes the PostgreSQL volume and all local CRM data:
 
 ```bash
-docker compose up db          # Postgres only
+docker compose down -v
+docker compose up --build
+```
+
+### Local Development
+
+Run PostgreSQL in Docker and the application locally:
+
+```bash
+docker compose up db
 cp .env.example .env
 bun install
-bun run dev                   # API on :3000 with hot reload
-cd web && bun install && bun run dev   # Vite dev server with /api proxy
+bun run dev
 ```
 
-### Environment
-
-| Var            | Purpose                          |
-| -------------- | -------------------------------- |
-| `DATABASE_URL` | Postgres connection string       |
-| `PORT`         | Port the app listens on (3000)   |
-
-## How migrations work
-
-Two kinds of schema changes exist:
-
-1. **Fixed metadata tables** (`entities`, `fields`, the `field_type` enum) — versioned
-   Drizzle migrations in `drizzle/`. Regenerate with `bun run db:generate`, apply with
-   `bun run db:migrate` (or let the app auto-migrate on boot).
-2. **Dynamic data tables** — created *and later altered* at runtime through
-   `src/lib/dynamic-sql.ts`, which strictly allowlists every identifier
-   (`^[a-z][a-z0-9_]*$`) before interpolation. Metadata rows are written only after DDL
-   succeeds, with compensating cleanup on failure, so the registry and Postgres never
-   diverge. Impossible type casts surface Postgres's error as a 400 and leave both sides
-   untouched.
-
-### Example flow
+Run the Vue development server separately when needed:
 
 ```bash
-curl -X POST localhost:3000/api/dev/entities -H 'Content-Type: application/json' \
-     -d '{"slug":"contacts","label":"Contacts"}'
-curl -X POST localhost:3000/api/dev/entities/contacts/fields -H 'Content-Type: application/json' \
-     -d '{"name":"full_name","label":"Full Name","type":"text","is_required":true}'
-curl -XPATCH localhost:3000/api/dev/entities/contacts/fields/full_name -H 'Content-Type: application/json' \
-     -d '{"type":"number"}'
-docker compose exec db psql -U nanobliss -d nanobliss -c '\d contacts'
+cd web
+bun install
+bun run dev
 ```
 
-## API surface
+Useful commands:
 
-Dev/config (`/api/dev`, unauthenticated):
+```bash
+bun run build:web       # Type-check and build the Vue app
+bun run lint            # TypeScript check for the backend
+bun run lint:web        # Vue TypeScript check
+bun run db:generate     # Generate a Drizzle migration
+bun run db:migrate      # Apply migrations
+```
+
+## Configuration
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `PORT` | Hono server port, default `3000` |
+
+See `.env.example` for a local PostgreSQL connection string.
+
+## API Surface
+
+All application APIs use `/api`. Authentication is handled with bearer tokens
+returned by registration or login. Structure mutations require a developer or
+administrator role.
+
+### Authentication
 
 | Method | Path | Purpose |
-| ------ | ---- | ------- |
-| POST   | `/entities` | Create entity + table |
-| GET    | `/entities` | List entities with fields |
-| PATCH  | `/entities/:slug` | Rename/retitle entity (reslug renames table) |
-| DELETE | `/entities/:slug` | Drop entity (only if zero rows) |
-| POST   | `/entities/:slug/fields` | Add field/column |
-| PATCH  | `/entities/:slug/fields/:name` | Edit field (rename column, re-cast type, label, required) |
-| DELETE | `/entities/:slug/fields/:name` | Delete field (drops column + its data) |
+| --- | --- | --- |
+| POST | `/api/auth/register` | Register an account |
+| POST | `/api/auth/login` | Sign in, optionally selecting an organization |
+| GET | `/api/auth/me` | Return the current account |
+| POST | `/api/auth/logout` | End the current session |
 
-Data (`/api/data`, generic): `GET/POST /:slug`, `GET/PUT/DELETE /:slug/:id`.
+### Hierarchy
 
-## Project layout
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/organizations` | List organizations |
+| POST | `/api/organizations` | Create an organization |
+| GET | `/api/organizations/:id/projects` | List projects in an organization |
+| POST | `/api/organizations/:id/projects` | Create a project in an organization |
+| GET | `/api/projects` | List projects |
+| GET | `/api/projects/:id` | Get a project and its tables |
+| GET | `/api/hierarchy` | Return organizations, projects, tables, columns, and reports |
 
+### Tables and Columns
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/organizations/:orgSlug/tables` | List project-scoped tables and columns |
+| POST | `/api/organizations/:orgSlug/tables` | Create a table under a project |
+| GET | `/api/organizations/:orgSlug/tables/:tableSlug` | Get table metadata |
+| DELETE | `/api/organizations/:orgSlug/tables/:tableSlug` | Delete an empty table |
+| POST | `/api/organizations/:orgSlug/tables/:tableSlug/fields` | Add a column |
+| POST | `/api/dev/entities/:orgSlug/:tableSlug/columns` | Add a developer column |
+| PATCH | `/api/dev/entities/:orgSlug/:tableSlug/columns/:name` | Edit a column |
+| DELETE | `/api/dev/entities/:orgSlug/:tableSlug/columns/:name` | Delete a column |
+
+Field type changes alter the physical PostgreSQL column and recast existing values.
+Invalid casts return a client error and do not update the metadata registry.
+
+### Records
+
+Generic record APIs are scoped by organization and table:
+
+```text
+GET    /api/data/:orgSlug/:tableSlug
+POST   /api/data/:orgSlug/:tableSlug
+GET    /api/data/:orgSlug/:tableSlug/:id
+PUT    /api/data/:orgSlug/:tableSlug/:id
+DELETE /api/data/:orgSlug/:tableSlug/:id
 ```
-src/                 Hono backend (Bun)
-  db/schema.ts         entities + fields metadata tables (Drizzle)
-  lib/dynamic-sql.ts   ALL dynamic identifier validation + SQL building
-  lib/meta-schema.ts   zod schemas built from field metadata
-  routes/dev.ts        dev/config API
-  routes/data.ts       generic CRUD API
-web/                 Vue 3 + Vite frontend
-  src/components/DynamicForm.vue   shared metadata-driven form
-  src/components/DateTimeField.vue calendar/time picker
-  src/pages/dev/…                  developer view
-  src/pages/app/…                  user view
+
+Canonical hierarchical aliases are also available under:
+
+```text
+/api/organizations/:orgSlug/tables/:tableSlug/records
 ```
 
-## Driver note
+### Reports
 
-`drizzle-orm/bun-sql` chosen over `node-postgres`. Gotchas handled in code:
-`db.execute()` returns row arrays directly (not `{ rows }`), NUMERIC reads back as
-strings, and JS `Date` objects must not be bound directly (Bun serializes them in a
-JS-only format Postgres rejects for DATE columns) — ISO strings are used instead.
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/projects/:projectId/reports` | List project reports |
+| POST | `/api/projects/:projectId/reports` | Create a report layout |
+| GET | `/api/projects/:projectId/reports/:reportId` | Get a report |
+| PATCH | `/api/projects/:projectId/reports/:reportId` | Update a report layout |
+| DELETE | `/api/projects/:projectId/reports/:reportId` | Delete a report |
+| POST | `/api/projects/:projectId/reports/:reportId/pdf` | Download a report PDF |
 
-## Known limitations
+## Data and Schema Design
 
-- **List views return at most 200 rows**, flat — no pagination/search/filter/sort.
-- **Type changes re-cast existing data** via Postgres `USING` casts; impossible casts are
-  rejected with the database's error and leave the registry untouched.
-- **Dev API is unauthenticated** — do not expose v0 to the public internet.
-- Entity deletion still requires an empty table; there is no bulk row clear.
+Fixed metadata is stored in PostgreSQL and versioned with Drizzle migrations:
 
-## Deferred to later versions
+- `organizations`
+- `projects`
+- `tables`
+- `columns`
+- `column_options`
+- `reports`
+- `views`
+- `users`
+- `activities`
 
-- **Authentication & sessions** (planned: Lucia + Oslo) — mounting point marked in
-  `src/index.ts`.
-- **Authorization / roles** (who can access `/dev` vs `/app`).
-- **OAuth integrations** (Gmail/Calendar via `arctic` + `googleapis`).
-- **Background job processing**.
-- **PDF generation / printing**.
-- **Field types beyond text/number/boolean/date/datetime** — `select` and `relation`
-  remain unimplemented.
-- **Pagination, search, filtering, sorting** on list views.
-- **Managed Postgres deployment configs** (RDS/Cloud SQL/Azure).
+Dynamic CRM data is stored in a PostgreSQL schema named after the organization slug.
+For example:
+
+```text
+acme.companies
+acme.contacts
+acme.deals
+```
+
+All dynamic identifiers are validated against `^[a-z][a-z0-9_]*$` before being used
+in SQL. Metadata writes happen after successful DDL, with cleanup on failure.
+
+## Project Layout
+
+```text
+src/
+  app.ts                         Hono application and route mounting
+  db/schema.ts                   Drizzle metadata schema
+  lib/dynamic-sql.ts             Safe dynamic DDL and DML helpers
+  lib/meta-schema.ts             Runtime record validation
+  modules/entities/              Table metadata services
+  modules/fields/                Column creation service
+  modules/records/               Record routes and PDF rendering
+  modules/reports/               Project report API
+  modules/tables/                Hierarchical table API
+  modules/views/                 Table view API
+  routes/auth.ts                 Authentication API
+  routes/dev.ts                  Developer table and column API
+  routes/orgs.ts                 Organization and project API
+web/src/
+  App.vue                        CRM and Dev Studio application shell
+  pages/app/                     Regular record views
+  pages/dev/                     Developer table and schema views
+  pages/reports/                 Drag-and-drop report editor
+  pages/admin/                   Organization and project administration
+  components/DynamicForm.vue     Metadata-driven record form
+```
+
+## Known Limitations
+
+- Record lists are currently capped at 200 rows and do not yet provide full
+  pagination, filtering, or server-side sorting.
+- Report layouts currently define printable document structure and selected fields;
+  advanced aggregation and multi-record report queries are not yet implemented.
+- PDF generation uses Puppeteer when available and a text-oriented `pdf-lib` fallback
+  in minimal environments.
+- Dynamic tables and columns are PostgreSQL-backed and should be tested with a
+  database backup strategy before production use.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-## Licenses of Dependencies
-
-All dependencies are MIT, Apache-2.0, BSD, ISC, or PostgreSQL-licensed.
+MIT. See [LICENSE](LICENSE).
