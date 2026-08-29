@@ -8,7 +8,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/connection";
-import { entities, orgs, projects } from "../../db/schema";
+import { tables, organizations, projects } from "../../db/schema";
 import {
   ensureOrgSchema,
   createEntityTable,
@@ -41,11 +41,11 @@ export async function resolveScope(input: {
       ? await db.select().from(projects).where(eq(projects.id, input.projectId))
       : await db.select().from(projects).where(eq(projects.slug, input.projectSlug!));
     if (!proj) throw notFound("Project not found");
-    const [org] = await db.select().from(orgs).where(eq(orgs.id, proj.orgId));
+    const [org] = await db.select().from(organizations).where(eq(organizations.id, proj.orgId));
     if (!org) throw notFound("Project has no organization");
     return { orgId: org.id, orgSlug: org.slug, projectId: proj.id };
   }
-  const [org] = await db.select().from(orgs).where(eq(orgs.id, orgId!));
+  const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId!));
   if (!org) throw notFound("Organization not found");
   return { orgId: org.id, orgSlug: org.slug, projectId: null };
 }
@@ -58,9 +58,9 @@ export async function createEntity(input: {
   editRole?: string;
 }) {
   const [existing] = await db
-    .select({ id: entities.id })
-    .from(entities)
-    .where(and(eq(entities.orgId, input.scope.orgId), eq(entities.slug, input.slug)));
+    .select({ id: tables.id })
+    .from(tables)
+    .where(and(eq(tables.orgId, input.scope.orgId), eq(tables.slug, input.slug)));
   if (existing) throw conflict(`Entity "${input.slug}" already exists in organization "${input.scope.orgSlug}"`);
 
   await ensureOrgSchema(db, input.scope.orgSlug);
@@ -74,11 +74,11 @@ export async function createEntity(input: {
     } else throw e;
   }
 
-  const [orgRow] = await db.select().from(orgs).where(eq(orgs.id, input.scope.orgId));
+  const [orgRow] = await db.select().from(organizations).where(eq(organizations.id, input.scope.orgId));
 
   try {
     const [entity] = await db
-      .insert(entities)
+      .insert(tables)
       .values({
         slug: input.slug,
         label: input.label,

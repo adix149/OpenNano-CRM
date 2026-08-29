@@ -23,9 +23,9 @@ export interface FieldMeta {
     | "select"
     | "relation";
   isRequired: boolean;
-  /** Predetermined values for select fields. */
+  /** Predetermined values for select columns. */
   options?: string[];
-  /** For relation fields: target entity id */
+  /** For relation columns: target entity id */
   relationEntityId?: number | null;
 }
 
@@ -69,10 +69,10 @@ function baseSchemaFor(field: FieldMeta): z.ZodType {
   }
 }
 
-/** Strict schema for row creation: required fields enforced, unknown keys rejected. */
-export function buildCreateSchema(fields: FieldMeta[]): z.ZodObject<Record<string, z.ZodType>> {
+/** Strict schema for row creation: required columns enforced, unknown keys rejected. */
+export function buildCreateSchema(columns: FieldMeta[]): z.ZodObject<Record<string, z.ZodType>> {
   const shape: Record<string, z.ZodType> = {};
-  for (const f of fields) {
+  for (const f of columns) {
     const base = baseSchemaFor(f);
     shape[f.name] = f.isRequired ? base : base.nullish();
   }
@@ -80,9 +80,9 @@ export function buildCreateSchema(fields: FieldMeta[]): z.ZodObject<Record<strin
 }
 
 /** Partial schema for row updates. */
-export function buildUpdateSchema(fields: FieldMeta[]): z.ZodObject<Record<string, z.ZodType>> {
+export function buildUpdateSchema(columns: FieldMeta[]): z.ZodObject<Record<string, z.ZodType>> {
   const shape: Record<string, z.ZodType> = {};
-  for (const f of fields) {
+  for (const f of columns) {
     shape[f.name] = baseSchemaFor(f).nullish();
   }
   return z.object(shape).strict();

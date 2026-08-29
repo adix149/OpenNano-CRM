@@ -162,8 +162,6 @@ export const activities = pgTable("activities", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ── Back-compat aliases (remove after migration) ─────────────────────────────
-export const entities = tables;
-export const fields = columns;
-export const fieldOptions = columnOptions;
-export const orgs = organizations;
+
+
+

@@ -181,4 +181,28 @@ export const api = {
     request<{ id: number; label: string }[]>(
       `/api/data/${orgSlug}/${slug}/lookup?search=${encodeURIComponent(search ?? "")}&limit=${limit ?? 20}${display ? `&display=${encodeURIComponent(display)}` : ""}`,
     ),
+
+  // Hierarchical v0.1 — canonical
+  listTables: (orgSlug: string) => request<Entity[]>(`/api/organizations/${orgSlug}/tables`),
+  createTable: (orgSlug: string, data: { slug: string; label: string; projectId?: number; viewRole?: string; editRole?: string }) =>
+    request<Entity>(`/api/organizations/${orgSlug}/tables`, json("POST", data)),
+  getTable: (orgSlug: string, slug: string) => request<Entity>(`/api/organizations/${orgSlug}/tables/${slug}`),
+
+  // Views
+  listViews: (orgSlug: string, tableSlug: string) => request<any[]>(`/api/organizations/${orgSlug}/tables/${tableSlug}/views`),
+  createView: (orgSlug: string, tableSlug: string, data: { slug: string; label: string; kind: string; layout: any; config?: any }) =>
+    request<any>(`/api/organizations/${orgSlug}/tables/${tableSlug}/views`, json("POST", data)),
+  getView: (orgSlug: string, tableSlug: string, viewSlug: string) =>
+    request<any>(`/api/organizations/${orgSlug}/tables/${tableSlug}/views/${viewSlug}`),
+  updateView: (orgSlug: string, tableSlug: string, viewSlug: string, patch: any) =>
+    request<any>(`/api/organizations/${orgSlug}/tables/${tableSlug}/views/${viewSlug}`, json("PATCH", patch)),
+  deleteView: (orgSlug: string, tableSlug: string, viewSlug: string) =>
+    request<void>(`/api/organizations/${orgSlug}/tables/${tableSlug}/views/${viewSlug}`, { method: "DELETE" }),
+  viewPdf: (orgSlug: string, tableSlug: string, viewSlug: string, recordId: number) =>
+    request<Blob>(`/api/organizations/${orgSlug}/tables/${tableSlug}/views/${viewSlug}/pdf?recordId=${recordId}`, {}),
+
+  // Hierarchical records (aliases to /api/data for now)
+  listRecords: (orgSlug: string, tableSlug: string) => request<Row[]>(`/api/organizations/${orgSlug}/tables/${tableSlug}/records`),
+  createRecord: (orgSlug: string, tableSlug: string, payload: Record<string, unknown>) =>
+    request<Row>(`/api/organizations/${orgSlug}/tables/${tableSlug}/records`, json("POST", payload)),
 };

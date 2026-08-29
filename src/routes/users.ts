@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { db } from "../db";
+import { db } from "../db/connection";
 import { users } from "../db/schema";
 import { hashPassword } from "../lib/auth";
 import type { AuthVar } from "../lib/middleware";

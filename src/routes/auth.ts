@@ -2,9 +2,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { db } from "../db";
+import { db } from "../db/connection";
 import { users } from "../db/schema";
-import { orgs as orgsTable } from "../db/schema";
+import { organizations as orgsTable } from "../db/schema";
 import { createToken, hashPassword, verifyPassword, verifyToken, getTokenFromHeader } from "../lib/auth";
 
 const app = new Hono();
@@ -55,8 +55,8 @@ const orgSlug = parsed.data.orgSlug;
     .insert(users)
     .values({ username, displayName, passwordHash, role: finalRole, orgId: orgIdForUser } as any)
     .returning();
-  const token = await createToken({ sub: user.id, username: user.username, role: user.role as any, orgId: user.orgId });
-  return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.orgId, token });
+  const token = await createToken({ sub: user.id, username: user.username, role: user.role as any, orgId: user.organizationId });
+  return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.organizationId, token });
 });
 
 const loginBody = z.object({
@@ -73,14 +73,14 @@ app.post("/login", async (c) => {
   if (!user) return c.json({ error: "Invalid credentials" }, 401);
   if (parsed.data.orgSlug) {
     const [orgRow] = await db.select().from(orgsTable).where(eq(orgsTable.slug, parsed.data.orgSlug));
-    if (!orgRow || user.orgId !== orgRow.id) return c.json({ error: "Invalid credentials for this organization" }, 401);
+    if (!orgRow || user.organizationId !== orgRow.id) return c.json({ error: "Invalid credentials for this organization" }, 401);
   }
   const ok = await verifyPassword(parsed.data.password, user.passwordHash);
   if (!ok) return c.json({ error: "Invalid credentials" }, 401);
-  const token = await createToken({ sub: user.id, username: user.username, role: user.role as any, orgId: user.orgId });
+  const token = await createToken({ sub: user.id, username: user.username, role: user.role as any, orgId: user.organizationId });
   // Also set httpOnly cookie for browser clients
   c.header("Set-Cookie", `token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`);
-  return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.orgId, token });
+  return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.organizationId, token });
 });
 
 app.post("/logout", (c) => {
@@ -95,7 +95,7 @@ app.get("/me", async (c) => {
     const payload = await verifyToken(token);
     const [user] = await db.select().from(users).where(eq(users.id, payload.sub));
     if (!user) return c.json({ error: "User not found" }, 404);
-    return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.orgId });
+    return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.organizationId });
   } catch {
     return c.json({ error: "Invalid token" }, 401);
   }

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { eq, and, asc, inArray } from "drizzle-orm";
-import type { Db } from "../db";
-import { entities, fields, fieldOptions, orgs } from "../db/schema";
+import type { Db } from "../db/connection";
+import { tables, columns, columnOptions, organizations } from "../db/schema";
 import type { FieldType } from "./dynamic-sql";
 
 export interface FieldWithOptions {
@@ -14,16 +14,16 @@ export interface FieldWithOptions {
   sortOrder: number;
   createdAt: Date;
   options: string[];
-  relationEntityId: number | null;
+  relationTableId: number | null;
   relationFieldName?: string | null;
   inDetail?: boolean;
 }
 
 export interface ResolvedEntity {
-  entity: typeof entities.$inferSelect;
+  entity: typeof tables.$inferSelect;
   /** Postgres schema owning this entity's physical table (= org slug). */
   orgSlug: string;
-  fields: FieldWithOptions[];
+  columns: FieldWithOptions[];
 }
 
 /**
@@ -34,31 +34,32 @@ export interface ResolvedEntity {
  */
 export async function getEntityBySlug(db: Db, orgSlug: string, slug: string): Promise<ResolvedEntity | undefined> {
   const [row] = await db
-    .select({ entity: entities, orgSlug: orgs.slug })
-    .from(entities)
-    .innerJoin(orgs, eq(orgs.id, entities.orgId))
-    .where(and(eq(orgs.slug, orgSlug), eq(entities.slug, slug)));
+    .select({ entity: tables, orgSlug: organizations.slug })
+    .from(tables)
+    .innerJoin(organizations, eq(organizations.id, tables.orgId))
+    .where(and(eq(organizations.slug, orgSlug), eq(tables.slug, slug)));
   if (!row) return undefined;
   const fieldRows = await db
     .select()
-    .from(fields)
-    .where(eq(fields.entityId, row.entity.id))
-    .orderBy(asc(fields.sortOrder), asc(fields.id));
+    .from(columns)
+    .where(eq(columns.entityId, row.entity.id))
+    .orderBy(asc(columns.sortOrder), asc(columns.id));
   const optionRows =
     fieldRows.length > 0
       ? await db
           .select()
-          .from(fieldOptions)
-          .where(inArray(fieldOptions.fieldId, fieldRows.map((f) => f.id)))
-          .orderBy(asc(fieldOptions.sortOrder), asc(fieldOptions.id))
+          .from(columnOptions)
+          .where(inArray(columnOptions.fieldId, fieldRows.map((f) => f.id)))
+          .orderBy(asc(columnOptions.sortOrder), asc(columnOptions.id))
       : [];
   return { // @ts-ignore
       
     entity: row.entity,
     orgSlug: row.orgSlug,
-    fields: fieldRows.map((f) => ({
+    columns: fieldRows.map((f) => ({
       ...f,
       options: optionRows.filter((o) => o.fieldId === f.id).map((o) => o.value),
     })),
   };
 }
+export const getTableBySlug = getEntityBySlug;

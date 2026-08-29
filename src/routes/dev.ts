@@ -2,8 +2,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { eq, and, inArray } from "drizzle-orm";
-import { db } from "../db";
-import { entities, fields, fieldOptions, projects, orgs } from "../db/schema";
+import { db } from "../db/connection";
+import { tables, columns, columnOptions, projects, organizations } from "../db/schema";
 import {
   ensureOrgSchema,
   createEntityTable,
@@ -71,9 +71,9 @@ const createFieldBody = z.object({
   is_required: z.boolean().default(false),
   /** Show this field on the record detail page. */
   in_detail: z.boolean().optional(),
-  /** Predetermined values; required for select fields, ignored otherwise. */
+  /** Predetermined values; required for select columns, ignored otherwise. */
   options: z.array(z.string().min(1)).min(1).optional(),
-  /** For relation fields: target entity slug or id */
+  /** For relation columns: target entity slug or id */
   relationEntityId: z.number().int().positive().optional(),
   relationEntitySlug: z.string().optional(),
   /** Column of the target table used as the linking/display key. */
@@ -84,8 +84,8 @@ const createFieldBody = z.object({
 const optionsBody = z.object({ options: z.array(z.string().min(1)).min(1) }).strict();
 
 async function replaceOptions(fieldId: number, values: string[]) {
-  await db.delete(fieldOptions).where(eq(fieldOptions.fieldId, fieldId));
-  await db.insert(fieldOptions).values(values.map((value, i) => ({ fieldId: fieldId, value, sortOrder: i })));
+  await db.delete(columnOptions).where(eq(columnOptions.fieldId, fieldId));
+  await db.insert(columnOptions).values(values.map((value, i) => ({ fieldId: fieldId, value, sortOrder: i })));
 }
 
 async function attachOptions(fieldIds: number[]) {
@@ -93,9 +93,9 @@ async function attachOptions(fieldIds: number[]) {
     fieldIds.length > 0
       ? await db
           .select()
-          .from(fieldOptions)
-          .where(inArray(fieldOptions.fieldId, fieldIds))
-          .orderBy(fieldOptions.sortOrder, fieldOptions.id)
+          .from(columnOptions)
+          .where(inArray(columnOptions.fieldId, fieldIds))
+          .orderBy(columnOptions.sortOrder, columnOptions.id)
       : [];
   const map = new Map<number, string[]>();
   for (const r of rows) {
@@ -129,11 +129,11 @@ async function resolveScope(data: {
       ? await db.select().from(projects).where(eq(projects.id, data.projectId))
       : await db.select().from(projects).where(eq(projects.slug, data.projectSlug!));
     if (!proj) throw new Error("Project not found");
-    const [org] = await db.select().from(orgs).where(eq(orgs.id, proj.orgId));
+    const [org] = await db.select().from(organizations).where(eq(organizations.id, proj.orgId));
     if (!org) throw new Error("Project has no organization");
     return { orgId: org.id, orgSlug: org.slug, projectId: proj.id };
   }
-  const [org] = await db.select().from(orgs).where(eq(orgs.id, data.orgId!));
+  const [org] = await db.select().from(organizations).where(eq(organizations.id, data.orgId!));
   if (!org) throw new Error("Organization not found");
   return { orgId: org.id, orgSlug: org.slug, projectId: null };
 }
@@ -168,7 +168,7 @@ const updateFieldBody = z
     ]).optional(),
     is_required: z.boolean().optional(),
     in_detail: z.boolean().optional(),
-    /** Replaces the option set; only valid on select fields. */
+    /** Replaces the option set; only valid on select columns. */
     options: z.array(z.string().min(1)).min(1).optional(),
     relationEntityId: z.number().int().positive().optional(),
     relationEntitySlug: z.string().optional(),
@@ -198,8 +198,8 @@ app.post("/entities", async (c) => {
   // Slug must be unique inside the owning org (both scopes share this space).
   const [existing] = await db
     .select({ id: entities.id })
-    .from(entities)
-    .where(and(eq(entities.orgId, scope.orgId), eq(entities.slug, slug)));
+    .from(tables)
+    .where(and(eq(tables.orgId, scope.orgId), eq(tables.slug, slug)));
   if (existing) return c.json({ error: `Entity "${slug}" already exists in organization "${scope.orgSlug}"` }, 409);
 
   await ensureOrgSchema(db, scope.orgSlug);
@@ -219,7 +219,7 @@ app.post("/entities", async (c) => {
     }
   }
   try {
-    const [orgRow] = await db.select().from(orgs).where(eq(orgs.id, scope.orgId));
+    const [orgRow] = await db.select().from(organizations).where(eq(organizations.id, scope.orgId));
     const [entity] = await db
       .insert(entities)
       .values({
@@ -240,23 +240,23 @@ app.post("/entities", async (c) => {
 
 app.get("/entities", async (c) => {
   const entityRows = await db
-    .select({ entity: entities, orgSlug: orgs.slug })
-    .from(entities)
-    .innerJoin(orgs, eq(orgs.id, entities.orgId))
-    .orderBy(entities.id);
-  const fieldRows = await db.select().from(fields).orderBy(fields.sortOrder, fields.id);
+    .select({ entity: tables, orgSlug: organizations.slug })
+    .from(tables)
+    .innerJoin(organizations, eq(organizations.id, tables.orgId))
+    .orderBy(tables.id);
+  const fieldRows = await db.select().from(columns).orderBy(columns.sortOrder, columns.id);
   const optionMap = await attachOptions(fieldRows.map((f) => f.id));
   const result = entityRows.map(({ entity: e, orgSlug }) => ({
     ...e,
     orgSlug,
-    fields: fieldRows
-      .filter((f) => f.entityId === e.id)
+    columns: fieldRows
+      .filter((f) => f.tableId === e.id)
       .map((f) => ({ ...f, options: optionMap.get(f.id) ?? [] })),
   }));
   return c.json(result);
 });
 
-app.post("/entities/:orgSlug/:slug/fields", async (c) => {
+app.post("/entities/:orgSlug/:slug/columns", async (c) => {
   const slug = c.req.param("slug");
   const resolved = await getEntityBySlug(db, c.req.param("orgSlug"), slug);
   if (!resolved) return c.json({ error: `Entity "${slug}" not found` }, 404);
@@ -269,28 +269,28 @@ app.post("/entities/:orgSlug/:slug/fields", async (c) => {
   if (name === "id" || name === "created_at") {
     return c.json({ error: `Field name "${name}" is reserved` }, 409);
   }
-  if (resolved.fields.some((f) => f.name === name)) {
+  if (resolved.columns.some((f) => f.name === name)) {
     return c.json({ error: `Field "${name}" already exists on "${slug}"` }, 409);
   }
   if (type === "select" && (!parsed.data.options || (parsed.data.options as string[]).length === 0)) {
-    return c.json({ error: "Select fields require at least one option" }, 400);
+    return c.json({ error: "Select columns require at least one option" }, 400);
   }
   let relId: number | null = null;
   if (type === "relation") {
-    if (!relationEntityId && !relationEntitySlug) return c.json({ error: "Relation fields require relationEntityId or relationEntitySlug" }, 400);
+    if (!relationEntityId && !relationEntitySlug) return c.json({ error: "Relation columns require relationEntityId or relationEntitySlug" }, 400);
     if (relationEntityId) {
-      const [target] = await db.select().from(entities).where(eq(entities.id, relationEntityId));
+      const [target] = await db.select().from(tables).where(eq(tables.id, relationEntityId));
       if (!target) return c.json({ error: "Relation target entity not found" }, 400);
       relId = target.id;
     } else if (relationEntitySlug) {
-      const [target] = await db.select().from(entities).where(eq(entities.slug, relationEntitySlug));
+      const [target] = await db.select().from(tables).where(eq(tables.slug, relationEntitySlug));
       if (!target) return c.json({ error: "Relation target entity not found" }, 400);
       relId = target.id;
     }
-    if (!relationFieldName) return c.json({ error: "Relation fields require relationFieldName (the key column)" }, 400);
+    if (!relationFieldName) return c.json({ error: "Relation columns require relationFieldName (the key column)" }, 400);
   }
   if (relationFieldName && type === "relation" && relId !== null) {
-    const targetFields = await db.select({ name: fields.name }).from(fields).where(eq(fields.entityId, relId));
+    const targetFields = await db.select({ name: columns.name }).from(columns).where(eq(columns.entityId, relId));
     if (!targetFields.some((f) => f.name === relationFieldName)) {
       return c.json({ error: `Key column "${relationFieldName}" not found on the target table` }, 400);
     }
@@ -310,7 +310,7 @@ app.post("/entities/:orgSlug/:slug/fields", async (c) => {
   }
   try {
     const [field] = await db
-      .insert(fields)
+      .insert(columns)
       .values({ entityId: resolved.entity.id, name, label, type, isRequired: is_required, relationEntityId: relId, relationFieldName: type === "relation" ? relationFieldName ?? null : null, inDetail: (parsed.data as any).in_detail ?? true })
       .returning();
     if (type === "select") await replaceOptions(field.id, (parsed.data.options as string[])!);
@@ -338,8 +338,8 @@ app.patch("/entities/:orgSlug/:slug", async (c) => {
     // Slug uniqueness is scoped to the owning org.
     const [taken] = await db
       .select({ id: entities.id })
-      .from(entities)
-      .where(and(eq(entities.orgId, resolved.entity.orgId), eq(entities.slug, newSlug)));
+      .from(tables)
+      .where(and(eq(tables.orgId, resolved.entity.orgId), eq(tables.slug, newSlug)));
     if (taken) return c.json({ error: `Entity "${newSlug}" already exists in this organization` }, 409);
     await renameEntityTable(db, resolved.orgSlug, currentSlug, newSlug);
     currentSlug = newSlug;
@@ -353,7 +353,7 @@ app.patch("/entities/:orgSlug/:slug", async (c) => {
         ...(parsed.data.viewRole !== undefined ? { viewRole: parsed.data.viewRole } : {}),
         ...(parsed.data.editRole !== undefined ? { editRole: parsed.data.editRole } : {}),
       })
-      .where(eq(entities.id, resolved.entity.id))
+      .where(eq(tables.id, resolved.entity.id))
       .returning();
     return c.json(updated);
   } catch (err) {
@@ -363,12 +363,12 @@ app.patch("/entities/:orgSlug/:slug", async (c) => {
   }
 });
 
-app.patch("/entities/:orgSlug/:slug/fields/:name", async (c) => {
+app.patch("/entities/:orgSlug/:slug/columns/:name", async (c) => {
   const slug = c.req.param("slug");
   const fieldName = c.req.param("name");
   const resolved = await getEntityBySlug(db, c.req.param("orgSlug"), slug);
   if (!resolved) return c.json({ error: `Entity "${slug}" not found` }, 404);
-  const field = resolved.fields.find((f) => f.name === fieldName);
+  const field = resolved.columns.find((f) => f.name === fieldName);
   if (!field) return c.json({ error: `Field "${fieldName}" not found on "${slug}"` }, 404);
 
   const parsed = updateFieldBody.safeParse(await c.req.json());
@@ -380,32 +380,32 @@ app.patch("/entities/:orgSlug/:slug/fields/:name", async (c) => {
     return c.json({ error: "Nothing to update" }, 400);
   }
   if (options !== undefined && type !== "select" && (type ?? field.type) !== "select") {
-    return c.json({ error: "Options are only valid on select fields" }, 400);
+    return c.json({ error: "Options are only valid on select columns" }, 400);
   }
   // Resolve relation target if provided
   let relId: number | null | undefined = undefined;
   if (relationEntityId !== undefined || relationEntitySlug !== undefined) {
     const finalType = type ?? field.type;
-    if (finalType !== "relation") return c.json({ error: "relationEntityId only valid on relation fields" }, 400);
+    if (finalType !== "relation") return c.json({ error: "relationEntityId only valid on relation columns" }, 400);
     if (relationEntityId) {
-      const [target] = await db.select().from(entities).where(eq(entities.id, relationEntityId));
+      const [target] = await db.select().from(tables).where(eq(tables.id, relationEntityId));
       if (!target) return c.json({ error: "Relation target not found" }, 400);
       relId = target.id;
     } else if (relationEntitySlug) {
-      const [target] = await db.select().from(entities).where(eq(entities.slug, relationEntitySlug));
+      const [target] = await db.select().from(tables).where(eq(tables.slug, relationEntitySlug));
       if (!target) return c.json({ error: "Relation target not found" }, 400);
       relId = target.id;
     }
   }
   if (type === "relation" && relId === undefined && field.type !== "relation") {
-    return c.json({ error: "Relation fields require relationEntityId or relationEntitySlug" }, 400);
+    return c.json({ error: "Relation columns require relationEntityId or relationEntitySlug" }, 400);
   }
   const finalRelId = relId !== undefined ? relId : field.relationEntityId;
   const finalKey = relationFieldName !== undefined ? relationFieldName : field.relationFieldName ?? undefined;
   if ((type ?? field.type) === "relation") {
-    if (!finalKey) return c.json({ error: "Relation fields require relationFieldName (the key column)" }, 400);
+    if (!finalKey) return c.json({ error: "Relation columns require relationFieldName (the key column)" }, 400);
     if (finalRelId != null) {
-      const targetFields = await db.select({ name: fields.name }).from(fields).where(eq(fields.entityId, finalRelId));
+      const targetFields = await db.select({ name: columns.name }).from(columns).where(eq(columns.entityId, finalRelId));
       if (!targetFields.some((f) => f.name === finalKey)) {
         return c.json({ error: `Key column "${finalKey}" not found on the target table` }, 400);
       }
@@ -415,7 +415,7 @@ app.patch("/entities/:orgSlug/:slug/fields/:name", async (c) => {
     if (newName === "id" || newName === "created_at") {
       return c.json({ error: `Field name "${newName}" is reserved` }, 409);
     }
-    if (resolved.fields.some((f) => f.name === newName)) {
+    if (resolved.columns.some((f) => f.name === newName)) {
       return c.json({ error: `Field "${newName}" already exists on "${slug}"` }, 409);
     }
   }
@@ -445,7 +445,7 @@ app.patch("/entities/:orgSlug/:slug/fields/:name", async (c) => {
   const effectiveRelId = relId !== undefined ? relId : (type !== undefined && type !== "relation" ? null : undefined);
   const [updated] = hasMetaChanges
     ? await db
-        .update(fields)
+        .update(columns)
         .set({
           ...(newName !== undefined ? { name: newName } : {}),
           ...(label !== undefined ? { label } : {}),
@@ -457,7 +457,7 @@ app.patch("/entities/:orgSlug/:slug/fields/:name", async (c) => {
           ...(type !== undefined && type !== "relation" && field.type === "relation" ? { relationEntityId: null, relationFieldName: null } : {}),
           ...(type === "relation" && field.type !== "relation" ? { relationFieldName: relationFieldName ?? null } : {}),
         })
-        .where(eq(fields.id, field.id))
+        .where(eq(columns.id, field.id))
         .returning()
     : [{ ...field }];
 
@@ -468,32 +468,32 @@ app.patch("/entities/:orgSlug/:slug/fields/:name", async (c) => {
     return c.json({ ...updated, options: current, relationEntityId: (updated as any).relationEntityId ?? null });
   }
   if (field.type === "select" && type !== undefined && type !== "select") {
-    await db.delete(fieldOptions).where(eq(fieldOptions.fieldId, field.id));
+    await db.delete(columnOptions).where(eq(columnOptions.fieldId, field.id));
   }
   // If we updated relation, ensure options are empty
   return c.json({ ...updated, options: [], relationEntityId: (updated as any).relationEntityId ?? relId ?? null });
 });
 
-app.delete("/entities/:orgSlug/:slug/fields/:name", async (c) => {
+app.delete("/entities/:orgSlug/:slug/columns/:name", async (c) => {
   const slug = c.req.param("slug");
   const fieldName = c.req.param("name");
   const resolved = await getEntityBySlug(db, c.req.param("orgSlug"), slug);
   if (!resolved) return c.json({ error: `Entity "${slug}" not found` }, 404);
-  const field = resolved.fields.find((f) => f.name === fieldName);
+  const field = resolved.columns.find((f) => f.name === fieldName);
   if (!field) return c.json({ error: `Field "${fieldName}" not found on "${slug}"` }, 404);
 
   // Connections elsewhere that use this column as their link/display key.
   const affected = await db
     .select({
-      entityId: fields.entityId,
+      entityId: columns.entityId,
       entitySlug: entities.slug,
       entityLabel: entities.label,
-      fieldName: fields.name,
-      fieldLabel: fields.label,
+      fieldName: columns.name,
+      fieldLabel: columns.label,
     })
-    .from(fields)
-    .innerJoin(entities, eq(entities.id, fields.entityId))
-    .where(and(eq(fields.relationEntityId, resolved.entity.id), eq(fields.relationFieldName, fieldName)));
+    .from(columns)
+    .innerJoin(entities, eq(tables.id, columns.entityId))
+    .where(and(eq(columns.relationEntityId, resolved.entity.id), eq(columns.relationFieldName, fieldName)));
 
   const reassignTo = c.req.query("reassignTo")?.trim();
 
@@ -502,9 +502,9 @@ app.delete("/entities/:orgSlug/:slug/fields/:name", async (c) => {
     // (labels then degrade gracefully to "#id").
     if (reassignTo === "__id__") {
       await db
-        .update(fields)
+        .update(columns)
         .set({ relationFieldName: null })
-        .where(and(eq(fields.relationEntityId, resolved.entity.id), eq(fields.relationFieldName, fieldName)));
+        .where(and(eq(columns.relationEntityId, resolved.entity.id), eq(columns.relationFieldName, fieldName)));
     } else {
       if (!reassignTo) {
         return c.json(
@@ -515,19 +515,19 @@ app.delete("/entities/:orgSlug/:slug/fields/:name", async (c) => {
           409,
         );
       }
-      const stillExists = resolved.fields.some((f) => f.name !== fieldName && f.name === reassignTo);
+      const stillExists = resolved.columns.some((f) => f.name !== fieldName && f.name === reassignTo);
       if (!stillExists) {
         return c.json({ error: `Replacement key "${reassignTo}" is not a column of this table` }, 400);
       }
       await db
-        .update(fields)
+        .update(columns)
         .set({ relationFieldName: reassignTo })
-        .where(and(eq(fields.relationEntityId, resolved.entity.id), eq(fields.relationFieldName, fieldName)));
+        .where(and(eq(columns.relationEntityId, resolved.entity.id), eq(columns.relationFieldName, fieldName)));
     }
   }
 
   await dropColumnIfExists(db, resolved.orgSlug, slug, field.name);
-  await db.delete(fields).where(eq(fields.id, field.id));
+  await db.delete(columns).where(eq(columns.id, field.id));
   return c.body(null, 204);
 });
 
@@ -542,9 +542,20 @@ app.delete("/entities/:orgSlug/:slug", async (c) => {
   }
 
   await dropEntityTable(db, resolved.orgSlug, slug);
-  await db.delete(fields).where(eq(fields.entityId, resolved.entity.id));
-  await db.delete(entities).where(eq(entities.id, resolved.entity.id));
+  await db.delete(columns).where(eq(columns.entityId, resolved.entity.id));
+  await db.delete(entities).where(eq(tables.id, resolved.entity.id));
   return c.body(null, 204);
 });
 
+
+// Legacy aliases for hierarchical (also handle /tables as alias to /entities for transition)
+app.get("/tables", async (c) => {
+  const { tables, organizations } = await import("../db/schema");
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("../db/connection");
+  const orgs = await db.select().from(organizations);
+  // Return all tables as entities for backwards compat
+  const rows = await db.select().from(tables);
+  return c.json(rows);
+});
 export default app;

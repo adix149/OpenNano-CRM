@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
-import { db } from "../db";
-import { entities, orgs } from "../db/schema";
+import { db } from "../db/connection";
+import { tables, organizations } from "../db/schema";
 import { buildCreateSchema, buildUpdateSchema } from "../lib/meta-schema";
 import {
   listRows,
@@ -17,7 +17,7 @@ import type { AuthVar } from "../lib/middleware";
 
 /**
  * Fully generic CRUD driven by the registry. There are no per-entity handlers:
- * every request resolves :slug via the entities table (404 if unknown), then
+ * every request resolves :slug via the tables table (404 if unknown), then
  * validates payloads against a zod schema built from the entity's field
  * metadata. All physical access is namespaced to the owning org's schema.
  */
@@ -37,18 +37,18 @@ function validationError(c: any, error: z.ZodError) {
 }
 
 async function validateRelations(
-  fieldsMeta: any[],
+  columnsMeta: any[],
   values: Record<string, unknown>,
 ): Promise<string | null> {
-  for (const f of fieldsMeta) {
+  for (const f of columnsMeta) {
     if (f.type === "relation" && values[f.name] !== undefined && values[f.name] !== null) {
       const targetId = f.relationTableId;
       if (!targetId) continue;
       const [target] = await db
-        .select({ slug: entities.slug, orgSlug: orgs.slug })
-        .from(entities)
-        .innerJoin(orgs, eq(orgs.id, entities.orgId))
-        .where(eq(entities.id, targetId));
+        .select({ slug: tables.slug, orgSlug: organizations.slug })
+        .from(tables)
+        .innerJoin(organizations, eq(organizations.id, tables.orgId))
+        .where(eq(tables.id, targetId));
       if (!target) return `Relation field "${f.name}" has invalid target`;
       const id = Number(values[f.name]);
       if (!Number.isInteger(id) || id <= 0) return `Invalid relation id for "${f.name}"`;
@@ -62,7 +62,7 @@ async function validateRelations(
   return null;
 }
 
-// Searchable lookup for relation fields: GET /:slug/lookup?search=term&limit=20
+// Searchable lookup for relation columns: GET /:slug/lookup?search=term&limit=20
 // Returns [{ id, label }] for dropdowns. Label is first text-like field or id.
 app.get("/:orgSlug/:slug/lookup", async (c) => {
   const resolved = await getEntityBySlug(db, c.req.param("orgSlug"), c.req.param("slug"));
@@ -73,11 +73,11 @@ app.get("/:orgSlug/:slug/lookup", async (c) => {
   // Display field: caller may pin one via ?display= (validated); else first
   // text-like field, else the first field, else just ids.
   const requested = c.req.query("display")?.trim();
-  const valid = requested && resolved.fields.some((f) => f.name === requested) ? requested : undefined;
+  const valid = requested && resolved.columns.some((f) => f.name === requested) ? requested : undefined;
   const displayField =
     valid ??
-    resolved.fields.find((f) => ["text", "email", "phone", "select"].includes(f.type))?.name ??
-    resolved.fields[0]?.name;
+    resolved.columns.find((f) => ["text", "email", "phone", "select"].includes(f.type))?.name ??
+    resolved.columns[0]?.name;
   const table = sql`${sql.identifier(resolved.orgSlug)}.${sql.identifier(resolved.entity.slug)}`;
   let rows: Record<string, unknown>[];
   if (search && displayField) {
@@ -96,7 +96,7 @@ app.get("/:orgSlug/:slug", async (c) => {
   const resolved = await getEntityBySlug(db, c.req.param("orgSlug"), c.req.param("slug"));
   if (!resolved) return c.json({ error: `Unknown entity "${c.req.param("slug")}"` }, 404);
   if (!canView(c.get("user")?.role, resolved.entity)) return c.json({ error: "You do not have access to this table" }, 403);
-  const rows = await listRows(db, resolved.orgSlug, resolved.entity.slug, resolved.fields.map((f) => f.name));
+  const rows = await listRows(db, resolved.orgSlug, resolved.entity.slug, resolved.columns.map((f) => f.name));
   // v0 limitation: flat list capped at 200 rows — no pagination yet.
   return c.json(rows);
 });
@@ -105,7 +105,7 @@ app.post("/:orgSlug/:slug", async (c) => {
   const resolved = await getEntityBySlug(db, c.req.param("orgSlug"), c.req.param("slug"));
   if (!resolved) return c.json({ error: `Unknown entity "${c.req.param("slug")}"` }, 404);
 
-  const schema = buildCreateSchema(resolved.fields as any);
+  const schema = buildCreateSchema(resolved.columns as any);
   const parsed = schema.safeParse(await c.req.json());
   if (!parsed.success) return validationError(c, parsed.error);
 
@@ -113,7 +113,7 @@ app.post("/:orgSlug/:slug", async (c) => {
   const values = Object.fromEntries(
     Object.entries(parsed.data).filter(([, v]) => v !== undefined && v !== null),
   );
-  const relErr = await validateRelations(resolved.fields, values);
+  const relErr = await validateRelations(resolved.columns, values);
   if (relErr) return c.json({ error: relErr }, 400);
   const row = await insertRow(db, resolved.orgSlug, resolved.entity.slug, values);
   return c.json(row, 201);
@@ -125,7 +125,7 @@ app.get("/:orgSlug/:slug/:id", async (c) => {
   if (!canView(c.get("user")?.role, resolved.entity)) return c.json({ error: "You do not have access to this table" }, 403);
   const id = idParam.safeParse(c.req.param("id"));
   if (!id.success) return c.json({ error: "Invalid id" }, 400);
-  const row = await getRowById(db, resolved.orgSlug, resolved.entity.slug, resolved.fields.map((f) => f.name), id.data);
+  const row = await getRowById(db, resolved.orgSlug, resolved.entity.slug, resolved.columns.map((f) => f.name), id.data);
   if (!row) return c.json({ error: "Row not found" }, 404);
   return c.json(row);
 });
@@ -136,7 +136,7 @@ app.put("/:orgSlug/:slug/:id", async (c) => {
   const id = idParam.safeParse(c.req.param("id"));
   if (!id.success) return c.json({ error: "Invalid id" }, 400);
 
-  const schema = buildUpdateSchema(resolved.fields as any);
+  const schema = buildUpdateSchema(resolved.columns as any);
   const parsed = schema.safeParse(await c.req.json());
   if (!parsed.success) return validationError(c, parsed.error);
 
@@ -144,8 +144,8 @@ app.put("/:orgSlug/:slug/:id", async (c) => {
     Object.entries(parsed.data).filter(([, v]) => v !== undefined && v !== null),
   );
   if (!canEdit(c.get("user")?.role, resolved.entity)) return c.json({ error: "You do not have permission to edit records here" }, 403);
-  if (Object.keys(values).length === 0) return c.json({ error: "No fields to update" }, 400);
-  const relErr = await validateRelations(resolved.fields, values);
+  if (Object.keys(values).length === 0) return c.json({ error: "No columns to update" }, 400);
+  const relErr = await validateRelations(resolved.columns, values);
   if (relErr) return c.json({ error: relErr }, 400);
 
   const row = await updateRowById(db, resolved.orgSlug, resolved.entity.slug, values, id.data);

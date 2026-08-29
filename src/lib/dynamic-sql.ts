@@ -13,7 +13,7 @@
  * single DROP SCHEMA.
  */
 import { sql } from "drizzle-orm";
-import type { Db } from "../db";
+import type { Db } from "../db/connection";
 
 /** Strict identifier allowlist: lowercase start, then lowercase/digits/underscore. */
 const IDENTIFIER_RE = /^[a-z][a-z0-9_]*$/;

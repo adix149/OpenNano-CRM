@@ -15,7 +15,10 @@ import orgsRoutes, { projectApp } from "./routes/orgs";
 import usersRoutes from "./routes/users";
 import devRoutes from "./routes/dev";
 import dataRoutes from "./routes/data";
-import { db } from "./db";
+import viewsRoutes from "./modules/views/views.routes";
+import tablesRoutes from "./modules/tables/tables.routes";
+import recordsRoutes from "./modules/records/records.routes";
+import { db } from "./db/connection";
 
 export function createApp() {
   const app = new Hono();
@@ -30,23 +33,26 @@ export function createApp() {
   // Public
   app.route("/api/auth", authRoutes);
 
-  // Protected / hierarchy
-  app.route("/api/orgs", orgsRoutes);
+  // Protected / hierarchy — canonical v0.1 + legacy (remove after frontend migrates)
+  app.route("/api/organizations", orgsRoutes);
   app.route("/api/projects", projectApp);
   app.route("/api/users", usersRoutes);
   app.route("/api/dev", devRoutes);
   app.route("/api/data", dataRoutes);
+  app.route("/api/organizations/:orgSlug/tables", tablesRoutes);
+  app.route("/api/organizations/:orgSlug/tables/:tableSlug/records", recordsRoutes);
+  app.route("/api/organizations/:orgSlug/tables/:tableSlug/views", viewsRoutes);
 
   // Hierarchy overview for dashboards
   app.get("/api/hierarchy", async (c) => {
-    const { orgs, projects, entities, fields } = await import("./db/schema");
+    const { organizations, projects, tables, columns } = await import("./db/schema");
     const [orgRows, projRows, entRows, fieldRows] = await Promise.all([
-      db.select().from(orgs),
+      db.select().from(organizations),
       db.select().from(projects),
-      db.select().from(entities),
-      db.select().from(fields),
+      db.select().from(tables),
+      db.select().from(columns),
     ]);
-    return c.json({ orgs: orgRows, projects: projRows, entities: entRows, fields: fieldRows });
+    return c.json({ organizations: orgRows, projects: projRows, tables: entRows, columns: fieldRows });
   });
 
   // SPA fallback — API routes above take precedence

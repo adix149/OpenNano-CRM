@@ -12,6 +12,6 @@ COPY web/dist ./web/dist
 
 EXPOSE 3000
 
-# Migrations run programmatically on boot inside src/index.ts (auto-migrate),
+# Migrations run programmatically on boot inside src/server.ts (auto-migrate),
 # after the db healthcheck has passed.
-CMD ["bun", "run", "src/index.ts"]
+CMD ["bun", "run", "src/server.ts"]

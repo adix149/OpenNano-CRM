@@ -9,7 +9,7 @@
 
 import { serve } from "bun";
 import { migrate } from "drizzle-orm/bun-sql/migrator";
-import { db } from "./db";
+import { db } from "./db/connection";
 import { createApp } from "./app";
 import { ensureOrgSchema } from "./lib/dynamic-sql";
 import { env } from "./config/env";
@@ -17,8 +17,8 @@ import { env } from "./config/env";
 await migrate(db, { migrationsFolder: "./drizzle" });
 
 {
-  const { orgs } = await import("./db/schema");
-  const rows = await db.select().from(orgs);
+  const { organizations } = await import("./db/schema");
+  const rows = await db.select().from(organizations);
   for (const org of rows) {
     try {
       await ensureOrgSchema(db, org.slug);

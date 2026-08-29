@@ -27,6 +27,7 @@ const router = createRouter({
     { path: "/admin/orgs/:id", component: () => import("./pages/admin/OrgDetailPage.vue") },
     { path: "/admin/projects/:id", component: () => import("./pages/admin/ProjectDetailPage.vue") },
     { path: "/admin/users", component: () => import("./pages/admin/UsersPage.vue") },
+    { path: "/:orgSlug/tables/:tableSlug/views/:viewSlug", component: () => import("./features/views/ViewPage.vue") },
 
     // Legacy paths
     { path: "/app", redirect: "/home" },
