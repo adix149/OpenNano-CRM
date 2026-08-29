@@ -28,6 +28,7 @@ const queryClient = useQueryClient();
 const projectQuery = useQuery({ queryKey: ["project", projectId], queryFn: () => api.getProject(projectId) });
 const orgsQuery = useQuery({ queryKey: ["orgs"], queryFn: api.listOrgs });
 const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: api.listEntities });
+const reportsQuery = useQuery({ queryKey: ["reports", projectId], queryFn: () => api.listReports(projectId) });
 
 const project = computed(() => projectQuery.data.value);
 const tables = computed(() => (entitiesQuery.data.value ?? []).filter((e) => e.projectId === projectId));
@@ -142,6 +143,20 @@ const deleteProject = useMutation({
         </CardContent>
       </Card>
     </div>
+
+    <Card>
+      <CardHeader class="flex-row items-center justify-between space-y-0">
+        <div><CardTitle class="text-base">Reports</CardTitle><CardDescription>Printable documents built from fields across this organization’s tables.</CardDescription></div>
+        <Button size="sm" as-child><RouterLink :to="`/dev/projects/${projectId}/reports`">+ New report</RouterLink></Button>
+      </CardHeader>
+      <CardContent class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <RouterLink v-for="report in reportsQuery.data.value ?? []" :key="report.id" :to="`/dev/projects/${projectId}/reports/${report.id}`" class="rounded-xl border p-4 transition hover:border-primary/50 hover:bg-muted/30">
+          <div class="flex items-center justify-between gap-2"><span class="font-medium">{{ report.label }}</span><span class="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-violet-700">PDF</span></div>
+          <p class="mt-1 text-xs text-muted-foreground">{{ report.layout.blocks.length }} layout block(s)</p>
+        </RouterLink>
+        <p v-if="!reportsQuery.data.value?.length" class="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No reports yet. Create a report from this project’s tables.</p>
+      </CardContent>
+    </Card>
 
     <Card class="border-destructive/50 max-w-xl">
       <CardHeader class="pb-2">

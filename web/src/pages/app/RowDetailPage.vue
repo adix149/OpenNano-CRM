@@ -40,6 +40,12 @@ const rowQuery = useQuery({
   enabled: computed(() => Boolean(entity.value?.orgSlug)),
 });
 
+const viewsQuery = useQuery({
+  queryKey: ["views", entity.value?.orgSlug ?? "", slug],
+  queryFn: () => api.listViews(entity.value!.orgSlug!, slug),
+  enabled: computed(() => Boolean(entity.value?.orgSlug)),
+});
+
 const row = computed<Record<string, unknown> | undefined>(() => {
   const r = rowQuery.data.value as Record<string, unknown> | undefined;
   return Array.isArray(r) ? r[0] : r;
@@ -78,16 +84,38 @@ const deleteRow = useMutation({
     router.push(`/data/${slug}`);
   },
 });
+
+const pdfView = computed(() => viewsQuery.data.value?.find((view: any) => view.kind === "pdf"));
+
+function printRecord() {
+  window.print();
+}
+
+async function downloadPdf() {
+  if (!pdfView.value || !entity.value?.orgSlug) return;
+  const blob = await api.viewPdf(entity.value.orgSlug, slug, pdfView.value.slug, rowId);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${slug}-${rowId}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
 </script>
 
 <template>
-  <div class="space-y-5" v-if="entity && row">
+  <div class="record-print-page space-y-5" v-if="entity && row">
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0">
         <RouterLink :to="`/data/${slug}`" class="text-sm text-muted-foreground hover:underline">&larr; {{ entity.label }}</RouterLink>
         <h1 class="truncate text-2xl font-semibold tracking-tight">{{ title }}</h1>
       </div>
-      <div v-if="mayEdit" class="flex shrink-0 gap-2">
+      <div class="flex shrink-0 flex-wrap justify-end gap-2">
+        <Button variant="outline" size="sm" @click="printRecord">Print</Button>
+        <Button v-if="pdfView" variant="outline" size="sm" :disabled="viewsQuery.isFetching.value" @click="downloadPdf">Download PDF</Button>
+        <RouterLink v-else-if="mayEdit" to="/dev" class="self-center text-xs text-muted-foreground hover:underline">Create a PDF template in Dev Studio</RouterLink>
+      </div>
+      <div v-if="mayEdit" class="flex shrink-0 gap-2 print:hidden">
         <Button variant="outline" size="sm" as-child>
           <RouterLink :to="`/data/${slug}/${rowId}/edit`">Edit</RouterLink>
         </Button>
@@ -145,7 +173,7 @@ const deleteRow = useMutation({
       </Card>
     </div>
 
-    <div v-if="incoming.length > 0" class="space-y-3">
+    <div v-if="incoming.length > 0" class="space-y-3 print:hidden">
       <h2 class="text-sm font-medium uppercase text-muted-foreground">Linked records</h2>
       <div class="grid gap-4 md:grid-cols-2">
         <Card v-for="item in incoming" :key="item.source.id + item.field.name" class="p-4">

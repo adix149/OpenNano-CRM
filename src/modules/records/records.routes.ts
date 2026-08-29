@@ -79,7 +79,9 @@ app.get("/lookup", async (c) => {
   const { sql } = await import("drizzle-orm");
   const field = display && resolved.columns.find((f) => f.name === display) ? display : resolved.columns.find((f) => ["text","email","phone","select"].includes(f.type))?.name ?? resolved.columns[0]?.name;
   if (!field) return c.json([]);
+  console.log("DEBUG: orgSlug:", resolved.orgSlug, "tableSlug:", resolved.entity.slug, "field:", field, "q:", q);
   const rows = await (await import("../../db/connection")).db.execute(sql`SELECT id, ${sql.identifier(field)} as label FROM ${sql.identifier(resolved.orgSlug)}.${sql.identifier(resolved.entity.slug)} WHERE CAST(${sql.identifier(field)} AS TEXT) ILIKE ${"%" + q + "%"} LIMIT 20`);
+  console.log("DEBUG: rows:", rows);
   return c.json((rows as any).rows ?? rows);
 });
 

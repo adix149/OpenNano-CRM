@@ -13,7 +13,7 @@ const registerBody = z.object({
   username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_\-.]+$/),
   password: z.string().min(6).max(100),
   displayName: z.string().min(1).max(50),
-  role: z.enum(["admin", "developer", "editor", "viewer", "member"]).optional(),
+  role: z.enum(["admin", "developer", "editor", "viewer"]).optional(),
   /** Bind the account to this organization (slug). */
   orgSlug: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
 });
@@ -36,7 +36,7 @@ const orgSlug = parsed.data.orgSlug;
 
   const count = await db.select().from(users);
   const isFirstUser = count.length === 0;
-  const finalRole = isFirstUser ? "admin" : (role ?? "member");
+  const finalRole = isFirstUser ? "admin" : (role ?? "viewer");
 
   // Only admin can create admin users after the first
   if (!isFirstUser && finalRole === "admin") {
@@ -55,8 +55,8 @@ const orgSlug = parsed.data.orgSlug;
     .insert(users)
     .values({ username, displayName, passwordHash, role: finalRole, orgId: orgIdForUser } as any)
     .returning();
-  const token = await createToken({ sub: user.id, username: user.username, role: user.role as any, orgId: user.organizationId });
-  return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.organizationId, token });
+  const token = await createToken({ sub: user.id, username: user.username, role: user.role as any, orgId: user.orgId });
+  return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.orgId, token });
 });
 
 const loginBody = z.object({
@@ -77,10 +77,10 @@ app.post("/login", async (c) => {
   }
   const ok = await verifyPassword(parsed.data.password, user.passwordHash);
   if (!ok) return c.json({ error: "Invalid credentials" }, 401);
-  const token = await createToken({ sub: user.id, username: user.username, role: user.role as any, orgId: user.organizationId });
+  const token = await createToken({ sub: user.id, username: user.username, role: user.role as any, orgId: user.orgId });
   // Also set httpOnly cookie for browser clients
   c.header("Set-Cookie", `token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`);
-  return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.organizationId, token });
+  return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.orgId, token });
 });
 
 app.post("/logout", (c) => {
@@ -95,7 +95,7 @@ app.get("/me", async (c) => {
     const payload = await verifyToken(token);
     const [user] = await db.select().from(users).where(eq(users.id, payload.sub));
     if (!user) return c.json({ error: "User not found" }, 404);
-    return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.organizationId });
+    return c.json({ id: user.id, username: user.username, displayName: user.displayName, role: user.role, orgId: user.orgId });
   } catch {
     return c.json({ error: "Invalid token" }, 401);
   }

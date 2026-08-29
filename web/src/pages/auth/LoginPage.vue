@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import { useQuery } from "@tanstack/vue-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -65,13 +65,18 @@ async function submit() {
           <Button :variant="mode === 'register' ? 'default' : 'outline'" size="sm" @click="mode = 'register'">Register</Button>
         </div>
         <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
-        <div v-if="(orgsQuery.data.value ?? []).length > 0" class="space-y-2">
+        <div v-if="orgsQuery.isLoading.value" class="text-sm text-muted-foreground">Loading organizations…</div>
+        <div v-else-if="orgsQuery.isError.value" class="text-sm text-destructive">Could not load organizations. Refresh and try again.</div>
+        <div v-else-if="(orgsQuery.data.value ?? []).length > 0" class="space-y-2">
           <Label for="org">Organization</Label>
           <select id="org" v-model="orgSlug" class="h-9 w-full rounded-md border bg-background px-3 text-sm">
             <option value="">— Choose your organization —</option>
             <option v-for="o in orgsQuery.data.value ?? []" :key="o.id" :value="o.slug">{{ o.name }}</option>
           </select>
         </div>
+        <p v-else class="text-sm text-muted-foreground">
+          No organizations yet. <RouterLink to="/setup" class="underline">Start setup</RouterLink>
+        </p>
         <div class="space-y-2">
           <Label for="username">Username</Label>
           <Input id="username" v-model="username" placeholder="johndoe" />

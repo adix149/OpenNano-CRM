@@ -40,7 +40,7 @@ CREATE TABLE "tables" (
 	"description" text,
 	"icon" text,
 	"organization_id" integer NOT NULL,
-	"project_id" integer,
+	"project_id" integer NOT NULL,
 	"view_role" text DEFAULT 'viewer' NOT NULL,
 	"edit_role" text DEFAULT 'editor' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -103,7 +103,7 @@ ALTER TABLE "column_options" ADD CONSTRAINT "column_options_column_id_columns_id
 ALTER TABLE "columns" ADD CONSTRAINT "columns_table_id_tables_id_fk" FOREIGN KEY ("table_id") REFERENCES "public"."tables"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "columns" ADD CONSTRAINT "columns_relation_table_id_tables_id_fk" FOREIGN KEY ("relation_table_id") REFERENCES "public"."tables"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tables" ADD CONSTRAINT "tables_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "tables" ADD CONSTRAINT "tables_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "tables" ADD CONSTRAINT "tables_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "projects" ADD CONSTRAINT "projects_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "views" ADD CONSTRAINT "views_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -112,4 +112,6 @@ CREATE UNIQUE INDEX "column_options_column_id_value_idx" ON "column_options" USI
 CREATE UNIQUE INDEX "columns_table_id_name_idx" ON "columns" USING btree ("table_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "tables_org_id_slug_idx" ON "tables" USING btree ("organization_id","slug");--> statement-breakpoint
 CREATE UNIQUE INDEX "projects_org_id_slug_idx" ON "projects" USING btree ("organization_id","slug");--> statement-breakpoint
+CREATE UNIQUE INDEX "projects_org_id_id_idx" ON "projects" USING btree ("organization_id","id");--> statement-breakpoint
+ALTER TABLE "tables" ADD CONSTRAINT "tables_org_project_fk" FOREIGN KEY ("organization_id", "project_id") REFERENCES "public"."projects"("organization_id", "id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "views_table_id_slug_idx" ON "views" USING btree ("table_id","slug");

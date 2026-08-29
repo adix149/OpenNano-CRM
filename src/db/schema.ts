@@ -5,7 +5,7 @@
  * Physical:  <organization_slug>.<table_slug> (one Postgres schema per org)
  */
 
-import { pgEnum, pgTable, serial, text, timestamp, boolean, integer, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgEnum, pgTable, serial, text, timestamp, boolean, integer, jsonb, uniqueIndex, foreignKey } from "drizzle-orm/pg-core";
 
 // ── Personas ─────────────────────────────────────────────────────────────────
 export const userRole = pgEnum("user_role", ["admin", "developer", "editor", "viewer"]);
@@ -79,13 +79,18 @@ export const tables = pgTable(
     orgId: integer("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
     viewRole: text("view_role").notNull().default("viewer"),
     editRole: text("edit_role").notNull().default("editor"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("tables_org_id_slug_idx").on(t.orgId, t.slug)],
+  (t) => [
+    uniqueIndex("tables_org_id_slug_idx").on(t.orgId, t.slug),
+    foreignKey({ columns: [t.orgId, t.projectId], foreignColumns: [projects.orgId, projects.id], name: "tables_org_project_fk" }),
+  ],
 );
 
 // ── Columns ──────────────────────────────────────────────────────────────────
@@ -146,6 +151,25 @@ export const views = pgTable(
   (t) => [uniqueIndex("views_table_id_slug_idx").on(t.tableId, t.slug)],
 );
 
+// Reports belong to projects and may reference fields from any table in the
+// same organization. JSON layout keeps the visual editor extensible.
+export const reports = pgTable(
+  "reports",
+  {
+    id: serial("id").primaryKey(),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    layout: jsonb("layout").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("reports_project_id_slug_idx").on(t.projectId, t.slug)],
+);
+
 // ── Activities ───────────────────────────────────────────────────────────────
 export const activities = pgTable("activities", {
   id: serial("id").primaryKey(),
@@ -161,7 +185,4 @@ export const activities = pgTable("activities", {
   actorId: integer("actor_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-
-
 

@@ -40,10 +40,69 @@ const props = defineProps<{ slug: string }>();
 const router = useRouter();
 const queryClient = useQueryClient();
 
-const tab = ref<"fields" | "data" | "settings">("fields");
+const tab = ref<"fields" | "data" | "templates" | "settings">("fields");
 
 const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: api.listEntities });
 const entity = computed<Entity | undefined>(() => entitiesQuery.data.value?.find((e) => e.slug === props.slug));
+const viewsQuery = useQuery({
+  queryKey: ["views", entity.value?.orgSlug ?? "", props.slug],
+  queryFn: () => api.listViews(entity.value!.orgSlug!, props.slug),
+  enabled: computed(() => Boolean(entity.value?.orgSlug)),
+});
+
+const templateLabel = ref("Record profile");
+const templateSlug = ref("record_profile");
+const templateError = ref("");
+const templateFields = ref<string[]>([]);
+const availableTemplateFields = computed(() => entity.value?.fields ?? []);
+
+function toggleTemplateField(name: string) {
+  templateFields.value = templateFields.value.includes(name)
+    ? templateFields.value.filter((field) => field !== name)
+    : [...templateFields.value, name];
+}
+
+const createTemplate = useMutation({
+  mutationFn: () => api.createView(entity.value!.orgSlug!, props.slug, {
+    slug: templateSlug.value.trim(),
+    label: templateLabel.value.trim(),
+    kind: "pdf",
+    layout: {
+      sections: [{
+        id: "details",
+        title: "Record details",
+        cols: 2,
+        fields: templateFields.value.map((name) => ({
+          name,
+          label: entity.value!.fields.find((field) => field.name === name)?.label,
+          span: 6,
+          hidden: false,
+        })),
+      }],
+    },
+  }),
+  onSuccess: async () => {
+    templateError.value = "";
+    await queryClient.invalidateQueries({ queryKey: ["views"] });
+    templateLabel.value = "Record profile";
+    templateSlug.value = "record_profile";
+    templateFields.value = [];
+  },
+  onError: (error) => (templateError.value = error.message),
+});
+
+function submitTemplate() {
+  templateError.value = "";
+  if (!templateLabel.value.trim() || !templateSlug.value.trim()) {
+    templateError.value = "Template name and slug are required";
+    return;
+  }
+  if (!templateFields.value.length) {
+    templateError.value = "Select at least one table field";
+    return;
+  }
+  createTemplate.mutate();
+}
 
 const previewKey = computed(() => (entity.value?.fields ?? []).map((f) => `${f.name}:${f.type}:${f.isRequired}`).join("|"));
 
@@ -129,10 +188,9 @@ const saveField = useMutation({
           : {}),
       });
     }
-    const changedType = fType.value !== editingField.value?.type;
     return api.updateField(entity.value!.orgSlug!, props.slug, originalName.value, {
       ...base,
-      ...(fType.value === "select" || (changedType && editingField.value?.type === "select")
+      ...(fType.value === "select"
         ? { options: parseOptions(fOptions.value).values! }
         : {}),
       ...(fType.value === "relation" && fTarget.value
@@ -146,10 +204,6 @@ const saveField = useMutation({
   },
   onError: (err) => (dlgError.value = err.message),
 });
-
-const editingField = computed(() =>
-  dlgMode.value === "edit" ? entity.value?.fields.find((f) => f.name === originalName.value) : undefined,
-);
 
 function submitField() {
   dlgError.value = "";
@@ -297,7 +351,7 @@ const typeBadgeVariant = (t: string) => (t === "relation" ? "default" : t === "s
         <p class="text-sm text-muted-foreground"><code>{{ entity.slug }}</code> · {{ entity.fields.length }} field(s)</p>
       </div>
       <div class="flex gap-1 rounded-md border p-1">
-        <Button v-for="t in (['fields', 'data', 'settings'] as const)" :key="t"
+        <Button v-for="t in (['fields', 'data', 'templates', 'settings'] as const)" :key="t"
           :variant="tab === t ? 'secondary' : 'ghost'" size="sm" class="capitalize" @click="tab = t">
           {{ t }}
         </Button>
@@ -371,6 +425,43 @@ const typeBadgeVariant = (t: string) => (t === "relation" ? "default" : t === "s
     <!-- DATA TAB -->
     <div v-else-if="tab === 'data'" class="mt-5">
       <DataRowsTable :entity="entity" />
+    </div>
+
+    <!-- PDF TEMPLATES TAB -->
+    <div v-else-if="tab === 'templates'" class="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <Card>
+        <CardHeader>
+          <CardTitle class="text-base">Advanced record views</CardTitle>
+          <CardDescription>Choose fields from {{ entity.label }} to build a printable PDF profile.</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <p v-if="templateError" class="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ templateError }}</p>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="space-y-1.5"><Label>Template name</Label><Input v-model="templateLabel" placeholder="Customer profile" /></div>
+            <div class="space-y-1.5"><Label>Template slug</Label><Input v-model="templateSlug" placeholder="customer_profile" /></div>
+          </div>
+          <div>
+            <Label>Fields in the PDF</Label>
+            <div class="mt-2 grid gap-2 sm:grid-cols-2">
+              <label v-for="field in availableTemplateFields" :key="field.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition hover:bg-muted/50">
+                <input type="checkbox" :checked="templateFields.includes(field.name)" @change="toggleTemplateField(field.name)" />
+                <span class="min-w-0"><span class="block text-sm font-medium">{{ field.label }}</span><span class="block text-xs text-muted-foreground">{{ field.type }}</span></span>
+              </label>
+            </div>
+          </div>
+          <Button :disabled="createTemplate.isPending.value" @click="submitTemplate">{{ createTemplate.isPending.value ? 'Creating…' : 'Create PDF template' }}</Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader class="pb-2"><CardTitle class="text-base">Saved templates</CardTitle></CardHeader>
+        <CardContent class="space-y-2">
+          <div v-for="view in viewsQuery.data.value ?? []" :key="view.id" class="rounded-lg border p-3">
+            <div class="font-medium">{{ view.label }}</div>
+            <div class="text-xs text-muted-foreground"><code>{{ view.slug }}</code> · {{ view.kind }}</div>
+          </div>
+          <p v-if="!viewsQuery.data.value?.length" class="text-sm text-muted-foreground">No templates yet.</p>
+        </CardContent>
+      </Card>
     </div>
 
     <!-- SETTINGS TAB -->
@@ -574,4 +665,3 @@ const typeBadgeVariant = (t: string) => (t === "relation" ? "default" : t === "s
 
   <p v-else-if="!entitiesQuery.isLoading.value" class="text-sm text-muted-foreground">Table not found.</p>
 </template>
-

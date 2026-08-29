@@ -98,26 +98,17 @@ const progress = ref("");
 const orgsQuery = useQuery({ queryKey: ["orgs"], queryFn: api.listOrgs });
 const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
 const entitiesQuery = useQuery({ queryKey: ["entities"], queryFn: api.listEntities });
-/** Tables for the active project + organization-wide tables of its owning org. */
-const currentOrg = computed(() => {
-  const p = (projectsQuery.data.value ?? []).find((x) => x.id === devProjectId.value);
-  return p?.orgId ?? null;
-});
+/** Tables nested under the active project. */
 const tables = computed(() =>
   (entitiesQuery.data.value ?? []).filter(
-    (e) => e.projectId === devProjectId.value || (currentOrg.value !== null && e.orgId === currentOrg.value && !e.projectId),
+    (e) => e.projectId === devProjectId.value,
   ),
 );
 
-// ── Scope selection: organization-wide vs project ──
-const scopeKind = ref<"org" | "project">("project");
-const scopeOrgId = ref<string>("");
+// Tables are always nested under a project.
 const scopeProjectId = ref<string>("");
 
 watch([orgsQuery.data, projectsQuery.data, dialogOpen], () => {
-  if (scopeOrgId.value === "" && (orgsQuery.data.value ?? []).length > 0) {
-    scopeOrgId.value = String(orgsQuery.data.value![0].id);
-  }
   const current = devProjectId.value ? String(devProjectId.value) : "";
   const known = (projectsQuery.data.value ?? []).some((p) => String(p.id) === current);
   scopeProjectId.value = known && current ? current : String(projectsQuery.data.value?.[0]?.id ?? "");
@@ -130,18 +121,16 @@ function projectPath(id: number): string {
   return `${o?.name ?? "?"} › ${p.name}`;
 }
 
-function activeScope(): { orgId?: number; projectId?: number } {
-  if (scopeKind.value === "org") {
-    return { orgId: Number(scopeOrgId.value) };
-  }
-  return { projectId: Number(scopeProjectId.value) };
+function activeScope(): { projectId: number } {
+  const id = Number(scopeProjectId.value);
+  if (!Number.isFinite(id) || id <= 0) throw new Error("Select a project before creating a table");
+  return { projectId: id };
 }
 
 function activeOrg(): string {
-  const id = Number(scopeKind.value === "org" ? scopeOrgId.value : scopeProjectId.value);
+  const id = Number(scopeProjectId.value);
   const proj = (projectsQuery.data.value ?? []).find((x) => x.id === id);
-  const orgId = scopeKind.value === "org" ? id : proj?.orgId;
-  return (orgsQuery.data.value ?? []).find((o) => o.id === orgId)?.slug ?? "";
+  return (orgsQuery.data.value ?? []).find((o) => o.id === proj?.orgId)?.slug ?? "";
 }
 
 
@@ -181,8 +170,8 @@ async function submit() {
   error.value = "";
   const label = selected.value.entityLabel || newLabel.value.trim();
   const slug = targetSlug();
-  if (!label || !slug) {
-    error.value = "Table name and slug are required";
+  if (!label || !slug || !Number(scopeProjectId.value)) {
+    error.value = "Table name, slug, and project are required";
     return;
   }
   creating.value = true;
@@ -307,40 +296,9 @@ const deleteEntity = useMutation({
 
           <div class="space-y-1.5">
             <Label>Scope</Label>
-            <div class="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                :class="['rounded-md border px-3 py-2 text-left transition-colors', scopeKind === 'project' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted']"
-                @click="scopeKind = 'project'"
-              >
-                <div class="text-sm font-medium">Project</div>
-                <div class="text-xs text-muted-foreground">Nested under a project</div>
-              </button>
-              <button
-                type="button"
-                :class="['rounded-md border px-3 py-2 text-left transition-colors', scopeKind === 'org' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted']"
-                @click="scopeKind = 'org'"
-              >
-                <div class="text-sm font-medium">Organization-wide</div>
-                <div class="text-xs text-muted-foreground">Shared across all projects</div>
-              </button>
-            </div>
-            <select
-              v-if="scopeKind === 'project'"
-              v-model="scopeProjectId"
-              class="h-9 w-full rounded-md border bg-background px-3 text-sm"
-            >
+            <select v-model="scopeProjectId" class="h-9 w-full rounded-md border bg-background px-3 text-sm">
               <option v-for="p in projectsQuery.data.value ?? []" :key="p.id" :value="String(p.id)">
                 {{ projectPath(p.id) }}
-              </option>
-            </select>
-            <select
-              v-else
-              v-model="scopeOrgId"
-              class="h-9 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              <option v-for="o in orgsQuery.data.value ?? []" :key="o.id" :value="String(o.id)">
-                {{ o.name }} ({{ o.slug }})
               </option>
             </select>
           </div>

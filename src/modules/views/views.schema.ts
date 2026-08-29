@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const layoutField = z.object({
   name: z.string().min(1),
+  label: z.string().optional(),
   span: z.number().int().min(1).max(12).default(6),
   hidden: z.boolean().default(false),
 });

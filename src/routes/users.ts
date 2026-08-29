@@ -22,7 +22,7 @@ app.post(
   requireAdmin,
   async (c) => {
     const body = z
-      .object({ username: z.string().min(3), password: z.string().min(6), displayName: z.string().min(1), role: z.enum(["admin", "developer", "editor", "viewer", "member"]).default("viewer"), orgId: z.number().int().optional() })
+      .object({ username: z.string().min(3), password: z.string().min(6), displayName: z.string().min(1), role: z.enum(["admin", "developer", "editor", "viewer"]).default("viewer"), orgId: z.number().int().optional() })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "Invalid body", details: z.treeifyError(body.error) }, 400);
     const [exists] = await db.select().from(users).where(eq(users.username, body.data.username));
@@ -43,7 +43,7 @@ app.patch(
     if (Number.isNaN(id)) return c.json({ error: "Invalid id" }, 400);
     if (user.role !== "admin" && user.sub !== id) return c.json({ error: "Forbidden" }, 403);
     const body = z
-      .object({ displayName: z.string().min(1).optional(), password: z.string().min(6).optional(), role: z.enum(["admin", "developer", "editor", "viewer", "member"]).optional(), orgId: z.number().int().nullable().optional() })
+      .object({ displayName: z.string().min(1).optional(), password: z.string().min(6).optional(), role: z.enum(["admin", "developer", "editor", "viewer"]).optional(), orgId: z.number().int().nullable().optional() })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "Invalid body" }, 400);
     if (body.data.role && user.role !== "admin") return c.json({ error: "Only admin can change role" }, 403);

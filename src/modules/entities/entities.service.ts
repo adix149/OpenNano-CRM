@@ -21,7 +21,7 @@ import { conflict, notFound } from "../../lib/errors";
 export interface EntityScope {
   orgId: number;
   orgSlug: string;
-  projectId: number | null;
+  projectId: number;
 }
 
 function pgErrorMessage(e: unknown): string {
@@ -35,7 +35,6 @@ export async function resolveScope(input: {
   organizationId?: number;
   orgId?: number;
 }): Promise<EntityScope> {
-  const orgId = (input as any).orgId ?? (input as any).orgId;
   if (input.projectId !== undefined || input.projectSlug !== undefined) {
     const [proj] = input.projectId
       ? await db.select().from(projects).where(eq(projects.id, input.projectId))
@@ -45,9 +44,7 @@ export async function resolveScope(input: {
     if (!org) throw notFound("Project has no organization");
     return { orgId: org.id, orgSlug: org.slug, projectId: proj.id };
   }
-  const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId!));
-  if (!org) throw notFound("Organization not found");
-  return { orgId: org.id, orgSlug: org.slug, projectId: null };
+  throw notFound("Tables must belong to a project");
 }
 
 export async function createEntity(input: {

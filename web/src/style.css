@@ -82,3 +82,71 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .app-frame { background: #f7f8fb; }
+  .app-sidebar { background: #10131b; border-color: #272c38; color: #eef1f6; }
+  .app-sidebar .text-muted-foreground { color: #8991a3; }
+  .brand-mark { display: flex; width: 2.25rem; height: 2.25rem; align-items: center; justify-content: center; border-radius: .7rem; background: linear-gradient(135deg, #8b5cf6, #34d399); color: #fff; font-weight: 800; box-shadow: 0 0 0 4px rgb(139 92 246 / .12); }
+  .mode-switch { background: #191d28; }
+  .mode-option { display: flex; align-items: center; gap: .55rem; border-radius: .65rem; padding: .55rem .65rem; color: #aeb5c4; font-size: .75rem; transition: 150ms ease; }
+  .mode-option:hover, .mode-option-active { background: #2a3040; color: #fff; }
+  .mode-dot { width: .45rem; height: .45rem; border-radius: 999px; box-shadow: 0 0 0 3px rgb(255 255 255 / .06); }
+  .nav-link { display: flex; align-items: center; gap: .7rem; border-radius: .7rem; padding: .65rem .7rem; color: #aeb5c4; font-size: .8rem; transition: 150ms ease; }
+  .nav-link:hover, .nav-link-active { background: #252b3a; color: #fff; }
+  .nav-glyph, .project-icon, .hierarchy-icon { display: inline-flex; align-items: center; justify-content: center; width: 1.55rem; height: 1.55rem; border-radius: .45rem; background: #303747; color: #d6dbea; font-size: .65rem; font-weight: 700; }
+  .project-heading { display: flex; align-items: center; gap: .55rem; padding: .35rem .5rem; color: #e7eaf1; font-size: .75rem; font-weight: 600; }
+  .project-icon { background: #43366e; color: #d9ccff; }
+  .table-link { display: flex; align-items: center; gap: .55rem; margin-left: 1.15rem; border-left: 1px solid #353b4b; padding: .42rem .5rem .42rem .85rem; color: #9da6b8; font-size: .75rem; transition: 150ms ease; }
+  .table-link:hover, .table-link-active { border-left-color: #a78bfa; color: #fff; background: #1b2030; }
+  .table-link-line { width: .3rem; height: .3rem; border: 1px solid currentColor; border-radius: 999px; }
+  .empty-sidebar { border: 1px dashed #343b4b; background: #171b25; }
+  .user-card { background: #191d28; }
+  .logout-link { padding: .35rem .5rem; color: #8991a3; font-size: .7rem; }
+  .logout-link:hover { color: #fff; }
+  .workspace-header { background: rgb(255 255 255 / .86); backdrop-filter: blur(12px); }
+  .hierarchy-node { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+  .hierarchy-avatar, .hierarchy-icon { flex: 0 0 auto; width: 2rem; height: 2rem; border-radius: .6rem; }
+  .hierarchy-avatar { display: inline-flex; align-items: center; justify-content: center; background: #e9ddff; color: #6d28d9; font-size: .7rem; font-weight: 800; }
+  .hierarchy-icon { background: #e8edf5; color: #526079; font-size: .65rem; font-weight: 800; }
+  .hierarchy-current .hierarchy-icon { background: #d1fae5; color: #047857; }
+  .hierarchy-kicker, .hierarchy-name { display: block; }
+  .hierarchy-kicker { color: #8b95a8; font-size: .58rem; line-height: 1; text-transform: uppercase; letter-spacing: .1em; }
+  .hierarchy-name { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #273044; font-size: .76rem; font-weight: 650; }
+  .hierarchy-separator { color: #b8c0ce; font-size: 1.1rem; }
+  .mode-badge { margin-left: .75rem; border-radius: 999px; padding: .3rem .6rem; font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .mode-badge-crm { background: #ecfdf5; color: #047857; }
+  .mode-badge-dev { background: #f3e8ff; color: #7e22ce; }
+  .report-palette-item { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: .5rem; border: 1px solid #e5e7eb; border-radius: .65rem; padding: .6rem .7rem; text-align: left; font-size: .78rem; transition: 150ms ease; }
+  .report-palette-item:hover { border-color: #a78bfa; background: #faf5ff; transform: translateX(2px); }
+  .report-type-pill { flex: 0 0 auto; border-radius: 999px; background: #f1f5f9; padding: .15rem .4rem; color: #64748b; font-size: .62rem; }
+  .report-canvas { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: .75rem; align-content: start; border-radius: .75rem; background: #f8fafc; padding: 1rem; }
+  .report-block { position: relative; display: flex; min-height: 4.5rem; align-items: center; gap: .7rem; border: 1px solid #dbe2ec; border-radius: .75rem; background: #fff; padding: .85rem 2.2rem .85rem .8rem; box-shadow: 0 2px 5px rgb(15 23 42 / .04); }
+  .report-block:hover { border-color: #a78bfa; box-shadow: 0 5px 14px rgb(109 40 217 / .08); }
+  .report-block-full { grid-column: span 12; }
+  .report-block-half { grid-column: span 6; }
+  .report-block-third { grid-column: span 4; }
+  .drag-handle { cursor: grab; color: #94a3b8; font-size: .9rem; letter-spacing: -.18em; }
+  .report-source { margin-bottom: .2rem; color: #8b5cf6; font-size: .63rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .report-remove { position: absolute; right: .65rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1.15rem; line-height: 1; }
+  .report-remove:hover { color: #dc2626; }
+  @media (max-width: 700px) {
+    .app-sidebar { width: 4.5rem; }
+    .app-sidebar .brand div:not(.brand-mark), .mode-option, .nav-link span:not(.nav-glyph), .project-heading span:not(.project-icon), .table-link, .empty-sidebar, .user-card > div:not(:first-child), .logout-link { display: none; }
+    .app-sidebar .mode-switch { background: transparent; }
+    .mode-switch { padding: 0; }
+    .mode-option-active { display: flex; justify-content: center; }
+    .nav-link { justify-content: center; }
+    .project-heading { justify-content: center; padding-top: 1rem; }
+    .workspace-header { padding-left: .8rem; padding-right: .8rem; }
+    .mode-badge { margin-left: .25rem; }
+    .report-block-half, .report-block-third { grid-column: span 12; }
+  }
+}
+
+@media print {
+  body { background: #fff; }
+  .app-sidebar, .workspace-header { display: none !important; }
+  .app-frame, main, main > div, main > div > div { display: block !important; height: auto !important; overflow: visible !important; max-width: none !important; }
+  .report-canvas-card { border: 0 !important; box-shadow: none !important; }
+}

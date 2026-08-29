@@ -42,7 +42,7 @@ app.get("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const [org] = await db.select().from(organizations).where(eq(organizations.id, id));
   if (!org) return c.json({ error: "Org not found" }, 404);
-  const projs = await db.select().from(projects).where(eq(projects.organizationId, id)).orderBy(projects.id);
+  const projs = await db.select().from(projects).where(eq(projects.orgId, id)).orderBy(projects.id);
   return c.json({ ...org, projects: projs });
 });
 
@@ -95,7 +95,7 @@ const updateProjectBody = z.object({ slug: identifier.optional(), name: z.string
 
 app.get("/:orgId/projects", async (c) => {
   const orgId = Number(c.req.param("orgId"));
-  const rows = await db.select().from(projects).where(eq(projects.organizationId, orgId)).orderBy(projects.id);
+  const rows = await db.select().from(projects).where(eq(projects.orgId, orgId)).orderBy(projects.id);
   return c.json(rows);
 });
 
@@ -108,7 +108,7 @@ app.post("/:orgId/projects", async (c) => {
   if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
   const [exists] = await db.select().from(projects).where(eq(projects.slug, parsed.data.slug));
   // check per-org uniqueness is enforced by index, but we check manually
-  const [dup] = await db.select().from(projects).where(eq(projects.organizationId, orgId));
+  const [dup] = await db.select().from(projects).where(eq(projects.orgId, orgId));
   // simpler: try insert and catch
   try {
     const [proj] = await db.insert(projects).values({ slug: parsed.data.slug, name: parsed.data.name, description: parsed.data.description ?? null, orgId: orgId }).returning();

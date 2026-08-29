@@ -34,39 +34,37 @@ const groups = computed(() => {
     .filter((g) => g.tables.length > 0);
 });
 
-const projectIds = computed(() => new Set((projectsQuery.data.value ?? []).map((p) => p.id)));
-
-/** Organization-wide (and orphaned) tables, grouped per org. */
-const orgScoped = computed(() => {
-  const entities = entitiesQuery.data.value ?? [];
-  return (orgsQuery.data.value ?? [])
-    .map((o) => ({
-      org: o,
-      tables: entities.filter((e) => e.orgId === o.id && (!e.projectId || !projectIds.value.has(e.projectId))),
-    }))
-    .filter((g) => g.tables.length > 0);
-});
-
 const isAdmin = computed(() => user.value?.role === "admin");
 const builder = computed(() => isBuilder(user.value?.role));
+const devMode = computed(() => route.path.startsWith("/dev") || route.path.startsWith("/admin"));
 
 /** Org shown in the hero: the account's bound organization. */
 const myOrg = computed(() =>
   user.value?.orgId ? (orgsQuery.data.value ?? []).find((o) => o.id === user.value!.orgId) : undefined,
 );
 
+const activeEntity = computed(() => {
+  const slug = String(route.params.slug ?? "");
+  return (entitiesQuery.data.value ?? []).find((entity) => entity.slug === slug);
+});
+
+const activeProject = computed(() =>
+  (projectsQuery.data.value ?? []).find((project) => project.id === activeEntity.value?.projectId),
+);
+
+const activeOrg = computed(() =>
+  (orgsQuery.data.value ?? []).find((org) => org.id === (activeProject.value?.orgId ?? activeEntity.value?.orgId ?? user.value?.orgId)),
+);
+
 const navItems = computed(() => {
-  const items = [{ to: "/home", label: "Home", active: route.path === "/home" }];
-  if (builder.value) {
-    items.push(
-      { to: "/dev", label: "Dev Studio", active: route.path.startsWith("/dev") },
-      { to: "/admin/hierarchy", label: "Hierarchy", active: route.path.startsWith("/admin/orgs") || route.path.startsWith("/admin/projects") || route.path.startsWith("/admin/hierarchy") },
-    );
+  if (devMode.value && builder.value) {
+    return [
+      { to: "/dev", label: "Schema overview", active: route.path === "/dev" },
+      { to: "/admin/hierarchy", label: "Hierarchy", active: route.path.startsWith("/admin/orgs") || route.path.startsWith("/admin/projects") || route.path === "/admin/hierarchy" },
+      ...(isAdmin.value ? [{ to: "/admin/users", label: "People & access", active: route.path.startsWith("/admin/users") }] : []),
+    ];
   }
-  if (isAdmin.value) {
-    items.push({ to: "/admin/users", label: "Users", active: route.path.startsWith("/admin/users") });
-  }
-  return items;
+  return [{ to: "/home", label: "Overview", active: route.path === "/home" }];
 });
 
 function handleLogout() {
@@ -76,75 +74,69 @@ function handleLogout() {
 </script>
 
 <template>
-  <div class="flex h-screen overflow-hidden">
-    <aside class="flex w-60 shrink-0 flex-col border-r bg-muted/40">
-      <RouterLink to="/home" class="flex items-center gap-2 border-b px-4 py-4">
-        <div class="flex size-7 items-center justify-center rounded bg-primary text-sm font-bold text-primary-foreground">N</div>
-        <span class="font-semibold tracking-tight">NanoBlissCRM</span>
-      </RouterLink>
+  <div class="app-frame flex h-screen overflow-hidden">
+    <aside class="app-sidebar flex w-72 shrink-0 flex-col border-r">
+      <div class="border-b p-4">
+        <RouterLink to="/home" class="brand flex items-center gap-3">
+          <div class="brand-mark">N</div>
+          <div>
+            <div class="font-semibold tracking-tight">NanoBlissCRM</div>
+            <div class="text-[11px] text-muted-foreground">Operations workspace</div>
+          </div>
+        </RouterLink>
+      </div>
 
-      <nav class="flex flex-col gap-0.5 px-2 py-2">
-        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to">
-          <Button :variant="item.active ? 'secondary' : 'ghost'" size="sm" class="w-full justify-start font-normal" as-child>
-            <span>{{ item.label }}</span>
-          </Button>
+      <div class="mode-switch m-3 rounded-xl p-1">
+        <RouterLink to="/home" :class="['mode-option', !devMode ? 'mode-option-active' : '']">
+          <span class="mode-dot bg-emerald-500"></span> CRM workspace
+        </RouterLink>
+        <RouterLink v-if="builder" to="/dev" :class="['mode-option', devMode ? 'mode-option-active' : '']">
+          <span class="mode-dot bg-violet-500"></span> Dev Studio
+        </RouterLink>
+      </div>
+
+      <nav class="flex flex-col gap-1 px-3">
+        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" class="nav-link" :class="{ 'nav-link-active': item.active }">
+          <span class="nav-glyph">{{ item.label.slice(0, 1) }}</span>
+          <span>{{ item.label }}</span>
         </RouterLink>
       </nav>
 
-      <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <p class="px-2 pb-1 pt-3 text-xs font-medium uppercase text-muted-foreground">Tables</p>
-        <template v-if="groups.length > 0 || orgScoped.length > 0">
-          <div v-for="g in orgScoped" :key="`org-${g.org.id}`" class="mb-2">
-            <div class="truncate px-2 py-1 text-xs text-muted-foreground">
-              {{ g.org.name }} · Organization-wide
+      <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        <div class="mt-6 mb-2 flex items-center justify-between px-2">
+          <p class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{{ devMode ? 'Project schemas' : 'Your workspace' }}</p>
+          <span class="text-[10px] text-muted-foreground">{{ groups.length }}</span>
+        </div>
+        <template v-if="groups.length > 0">
+          <div v-for="g in groups" :key="g.project.id" class="project-group mb-3">
+            <div class="project-heading">
+              <span class="project-icon">{{ g.project.name.slice(0, 1) }}</span>
+              <span class="min-w-0 flex-1 truncate">{{ g.project.name }}</span>
+              <span class="text-[10px] text-muted-foreground">{{ g.tables.length }}</span>
             </div>
-            <RouterLink v-for="e in g.tables" :key="e.id" :to="`/data/${e.slug}`">
-              <Button
-                :variant="route.params.slug === e.slug && route.path.startsWith('/data') ? 'secondary' : 'ghost'"
-                size="sm"
-                class="w-full justify-start font-normal"
-                as-child
-              >
-                <span class="truncate">{{ e.label }}</span>
-              </Button>
-            </RouterLink>
-          </div>
-          <div v-for="g in groups" :key="g.project.id" class="mb-2">
-            <div class="truncate px-2 py-1 text-xs text-muted-foreground">
-              {{ g.org?.name ?? "Org" }} › {{ g.project.name }}
-            </div>
-            <RouterLink v-for="e in g.tables" :key="e.id" :to="`/data/${e.slug}`">
-              <Button
-                :variant="route.params.slug === e.slug && route.path.startsWith('/data') ? 'secondary' : 'ghost'"
-                size="sm"
-                class="w-full justify-start font-normal"
-                as-child
-              >
-                <span class="truncate">{{ e.label }}</span>
-              </Button>
+            <RouterLink v-for="e in g.tables" :key="e.id" :to="`/data/${e.slug}`" class="table-link" :class="{ 'table-link-active': route.params.slug === e.slug && route.path.startsWith('/data') }">
+              <span class="table-link-line"></span>
+              <span class="truncate">{{ e.label }}</span>
             </RouterLink>
           </div>
         </template>
-        <p v-else class="px-2 py-1 text-sm text-muted-foreground">
-          No tables yet — create one in
-          <RouterLink to="/dev" class="underline">Dev Studio</RouterLink>.
-        </p>
+        <div v-else class="empty-sidebar rounded-xl p-3 text-xs text-muted-foreground">
+          No project tables yet. <RouterLink v-if="builder" to="/dev" class="font-medium text-foreground underline">Open Dev Studio</RouterLink>
+        </div>
       </div>
 
-      <div class="border-t p-2">
+      <div class="border-t p-3">
         <template v-if="user">
-          <div class="flex items-center gap-2 px-2 py-1.5">
-            <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium">
+          <div class="user-card flex items-center gap-2 rounded-xl p-2">
+            <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
               {{ initials(user.displayName) }}
             </div>
             <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium">{{ user.displayName }}</div>
-              <Badge variant="outline" class="h-4 px-1 text-[10px] uppercase">{{ user.role }}</Badge>
+              <div class="text-[10px] uppercase tracking-wide text-muted-foreground">{{ user.role }} access</div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" class="w-full justify-start font-normal text-muted-foreground" @click="handleLogout">
-            Log out
-          </Button>
+          <button class="logout-link mt-1 w-full text-left" @click="handleLogout">Log out</button>
         </template>
         <RouterLink v-else to="/login">
           <Button variant="outline" size="sm" class="w-full">Sign in</Button>
@@ -153,26 +145,32 @@ function handleLogout() {
     </aside>
 
     <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <!-- Hero header: org identity + current user -->
-      <header class="flex h-14 shrink-0 items-center gap-3 border-b bg-background px-5">
-        <template v-if="myOrg">
-          <div class="flex size-8 items-center justify-center rounded-md bg-primary/10 text-xs font-bold text-primary">
-            {{ initials(myOrg.name) }}
+      <header class="workspace-header shrink-0 border-b px-5 py-3">
+        <div class="flex items-center gap-3">
+          <div class="hierarchy-node hierarchy-org" v-if="activeOrg || myOrg">
+            <span class="hierarchy-avatar">{{ initials((activeOrg || myOrg)!.name) }}</span>
+            <span class="hidden sm:block"><span class="hierarchy-kicker">Organization</span><span class="hierarchy-name">{{ (activeOrg || myOrg)!.name }}</span></span>
           </div>
-          <div class="leading-tight">
-            <div class="text-sm font-semibold">{{ myOrg.name }}</div>
-            <div class="text-[11px] text-muted-foreground">Organization</div>
+          <span v-else class="text-sm text-muted-foreground">No organization selected</span>
+          <span v-if="activeProject" class="hierarchy-separator">/</span>
+          <div v-if="activeProject" class="hierarchy-node">
+            <span class="hierarchy-icon">P</span>
+            <span class="hidden sm:block"><span class="hierarchy-kicker">Project</span><span class="hierarchy-name">{{ activeProject.name }}</span></span>
           </div>
-          <div class="mx-2 h-6 w-px bg-border"></div>
-        </template>
-        <span v-else class="text-sm text-muted-foreground">No organization</span>
-
+          <span v-if="activeEntity" class="hierarchy-separator">/</span>
+          <div v-if="activeEntity" class="hierarchy-node hierarchy-current">
+            <span class="hierarchy-icon">T</span>
+            <span class="hidden sm:block"><span class="hierarchy-kicker">Table</span><span class="hierarchy-name">{{ activeEntity.label }}</span></span>
+          </div>
+          <div v-if="devMode" class="mode-badge mode-badge-dev">Developer mode</div>
+          <div v-else class="mode-badge mode-badge-crm">CRM mode</div>
+        </div>
         <div class="ml-auto flex items-center gap-3" v-if="user">
           <div class="text-right leading-tight">
             <div class="text-sm font-medium">{{ user.displayName }}</div>
             <Badge variant="outline" class="h-4 px-1 text-[10px] uppercase">{{ user.role }}</Badge>
           </div>
-          <div class="flex size-9 items-center justify-center rounded-full bg-secondary text-sm font-medium">
+          <div class="hidden size-9 items-center justify-center rounded-full bg-secondary text-sm font-medium md:flex">
             {{ initials(user.displayName) }}
           </div>
         </div>

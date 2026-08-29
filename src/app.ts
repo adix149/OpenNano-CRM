@@ -18,6 +18,7 @@ import dataRoutes from "./routes/data";
 import viewsRoutes from "./modules/views/views.routes";
 import tablesRoutes from "./modules/tables/tables.routes";
 import recordsRoutes from "./modules/records/records.routes";
+import reportsRoutes from "./modules/reports/reports.routes";
 import { db } from "./db/connection";
 
 export function createApp() {
@@ -42,17 +43,19 @@ export function createApp() {
   app.route("/api/organizations/:orgSlug/tables", tablesRoutes);
   app.route("/api/organizations/:orgSlug/tables/:tableSlug/records", recordsRoutes);
   app.route("/api/organizations/:orgSlug/tables/:tableSlug/views", viewsRoutes);
+  app.route("/api/projects/:projectId/reports", reportsRoutes);
 
   // Hierarchy overview for dashboards
   app.get("/api/hierarchy", async (c) => {
-    const { organizations, projects, tables, columns } = await import("./db/schema");
-    const [orgRows, projRows, entRows, fieldRows] = await Promise.all([
+    const { organizations, projects, tables, columns, reports } = await import("./db/schema");
+    const [orgRows, projRows, entRows, fieldRows, reportRows] = await Promise.all([
       db.select().from(organizations),
       db.select().from(projects),
       db.select().from(tables),
       db.select().from(columns),
+      db.select().from(reports),
     ]);
-    return c.json({ organizations: orgRows, projects: projRows, tables: entRows, columns: fieldRows });
+    return c.json({ organizations: orgRows, orgs: orgRows, projects: projRows, tables: entRows, entities: entRows, columns: fieldRows, fields: fieldRows, reports: reportRows });
   });
 
   // SPA fallback — API routes above take precedence

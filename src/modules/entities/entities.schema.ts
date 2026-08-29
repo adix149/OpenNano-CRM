@@ -9,12 +9,11 @@ export const createEntitySchema = z
     label: z.string().min(1),
     projectId: z.number().int().positive().optional(),
     projectSlug: z.string().optional(),
-    orgId: z.number().int().positive().optional(),
     viewRole: persona.optional(),
     editRole: persona.optional(),
   })
-  .refine((d) => d.projectId !== undefined || d.projectSlug !== undefined || d.orgId !== undefined, {
-    message: "Provide orgId (organization-wide) or projectId/projectSlug",
+  .refine((d) => d.projectId !== undefined || d.projectSlug !== undefined, {
+    message: "Provide projectId or projectSlug; tables must belong to a project",
   });
 
 export const updateEntitySchema = z
