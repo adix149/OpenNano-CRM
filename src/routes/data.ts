@@ -42,7 +42,7 @@ async function validateRelations(
 ): Promise<string | null> {
   for (const f of fieldsMeta) {
     if (f.type === "relation" && values[f.name] !== undefined && values[f.name] !== null) {
-      const targetId = f.relationEntityId;
+      const targetId = f.relationTableId;
       if (!targetId) continue;
       const [target] = await db
         .select({ slug: entities.slug, orgSlug: orgs.slug })
